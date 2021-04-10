@@ -1,0 +1,33 @@
+menu "Toga Setup"
+
+  config BLUETOOTH_DEVICE_NAME
+  string "Bluetooth Device Name"
+  default "Toga"
+  help
+      Bluetooth device name for advertising.
+
+  config ESP_POST_ENDPOINT
+  string "HTTP POST Endpoint"
+  default "https://ldm-nodered.herokuapp.com/esp32"
+  help
+      URL endpoint for the POST message.
+
+  config SLEEP_DURATION
+  int "Deep Sleep Duration (seconds)"
+  default 30
+  help
+      Deep sleep duration in seconds.
+
+  config BLE_ADVERTISE_DURATION
+  int "Advertising BLE Duration (seconds)"
+  default 10
+  help
+      Advertising BLE Duration in seconds.
+
+  config ZIGBEE_ENABLED
+  bool "Enable Zigbee Transmission"
+  default False
+  help
+      Enable Zigbee.
+
+endmenu
