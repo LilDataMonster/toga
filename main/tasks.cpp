@@ -28,6 +28,72 @@
 
 #include <globals.hpp>
 
+
+#define SENSOR_TASK_LOG "SENSOR_TASK"
+void sensor_task(void *pvParameters) {
+
+    // recast array to vector of sensors
+    std::vector<LDM::Sensor*> const *sensors = reinterpret_cast<std::vector<LDM::Sensor*> const*>(pvParameters);
+
+    // setup sensors
+    for(auto const& sensor : *sensors) {
+        ESP_LOGI(SENSOR_TASK_LOG, "Initializing Sensor: %s", sensor->getSensorName());
+        do {
+            // initialize sensor
+            esp_err_t init_err = sensor->init();
+
+            // retry initialization if failed
+            if(init_err != ESP_OK) {
+                ESP_LOGE(SENSOR_TASK_LOG, "Error Initializing Sensor: %s, Retrying...", sensor->getSensorName());
+                vTaskDelay(pdMS_TO_TICKS(100));  // wait before retrying
+            }
+        }
+        while(sensor->initialized != ESP_OK);
+    }
+
+    // read sensors
+    while(true){
+        // create a fresh JSON buffer (delete/free existing buffer if one already exists)
+        if(json_data != NULL) {
+            cJSON_Delete(json_data);
+            json_data = NULL;
+        }
+        json_data = cJSON_CreateObject();
+
+        // construct JSON data for system information
+        LDM::System system;
+        cJSON *system_json = system.buildJson();
+        cJSON_AddItemToObject(json_data, "board", system_json);
+
+        // loop through sensors and collect sensor data
+        for(auto const& sensor : *sensors) {
+            ESP_LOGI(SENSOR_TASK_LOG, "Reading Sensor: %s", sensor->getSensorName());
+
+            // read sensor
+            sensor->readSensor();
+
+            // create JSON data containing sensor information
+            cJSON *sensor_json = sensor->buildJson();
+            cJSON_AddItemToObject(json_data, sensor->getSensorName(), sensor_json);
+            sensor->releaseData();
+
+            // char* sensor_out = cJSON_Print(sensor_json);
+            // printf("%s\n", sensor_out);
+            // free(sensor_out);
+        }
+
+        // If you read the sensor data too often, it will heat up
+        // http://www.kandrsmith.org/RJS/Misc/Hygrometers/dht_sht_how_fast.html
+        // vTaskDelay(2000 / portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+
+
+
+/***********************************************************************************/
+
 #define SLEEP_DURATION CONFIG_SLEEP_DURATION
 #define BLE_ADVERTISE_DURATION CONFIG_BLE_ADVERTISE_DURATION
 
@@ -111,51 +177,6 @@ void led_fade_task(void *pvParameters) {
     }
 }
 
-
-// TODO: Move sensor task code from main.cpp to tasks.cpp (heap allocation issue for large camera image buffers)
-#define SENSOR_TASK_LOG "SENSOR_TASK"
-void sensor_task(void *pvParameters) {
-
-    // recast array to vector of sensors
-    std::vector<LDM::Sensor*> const *sensors = reinterpret_cast<std::vector<LDM::Sensor*> const*>(pvParameters);
-
-    // initialize sensors
-    for(auto const& sensor : *sensors) {
-        ESP_LOGI(SENSOR_TASK_LOG, "Initializing Sensor: %s", sensor->getSensorName());
-        sensor->init();
-    }
-
-    while(true){
-        // create JSON data to store output
-        if(json_data != NULL) {
-            cJSON_Delete(json_data);
-            json_data = NULL;
-        }
-        json_data = cJSON_CreateObject();
-
-        // loop through sensors and collect sensor data
-        for(auto const& sensor : *sensors) {
-            ESP_LOGI(SENSOR_TASK_LOG, "Reading Sensor: %s", sensor->getSensorName());
-
-            // read sensor
-            sensor->readSensor();
-
-            // create JSON data containing sensor information
-            cJSON *sensor_json = sensor->buildJson();
-            cJSON_AddItemToObject(json_data, sensor->getSensorName(), sensor_json);
-            sensor->releaseData();
-
-            // char* sensor_out = cJSON_Print(sensor_json);
-            // printf("%s\n", sensor_out);
-            // free(sensor_out);
-        }
-
-        // If you read the sensor data too often, it will heat up
-        // http://www.kandrsmith.org/RJS/Misc/Hygrometers/dht_sht_how_fast.html
-        // vTaskDelay(2000 / portTICK_PERIOD_MS);
-        vTaskDelay(pdMS_TO_TICKS(30000));
-    }
-}
 
 #define HTTP_POST_ENDPOINT CONFIG_ESP_POST_ENDPOINT
 #define HTTP_TASK_LOG "HTTP_TASK"
@@ -283,7 +304,7 @@ void sleep_task(void *pvParameters) {
     while(true) {
         // check if ready to go to sleep (aka message is finished sending)
         if(messageFinished) {
-          
+
             // deinitialize sensors
             for(auto const& sensor : *sensors) {
                 sensor->deinit();
