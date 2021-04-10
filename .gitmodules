@@ -1,0 +1,6 @@
+[submodule "components/ldm-lib"]
+	path = components/ldm-lib
+	url = git@github.com:LilDataMonster/ldm-lib.git
+[submodule "components/ldm-sensors"]
+	path = components/ldm-sensors
+	url = git@github.com:LilDataMonster/ldm-sensors.git
