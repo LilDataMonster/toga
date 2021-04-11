@@ -6,6 +6,7 @@
 #define LED_GPIO GPIO_NUM_4
 
 extern "C" {
+void setup_task(void *pvParameters);
 void sensor_task(void *pvParameters);
 void http_task(void *pvParameters);
 void xbee_task(void *pvParameters);

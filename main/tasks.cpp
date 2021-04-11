@@ -21,12 +21,25 @@
 #include <led.hpp>
 #include <ble.hpp>
 #include <system.hpp>
+#include <wifi.hpp>
 
 #include <driver/uart.h>
 #include <driver/gpio.h>
 #include <uri_handles.hpp>
 
 #include <globals.hpp>
+
+
+#define SETUP_TASK_LOG "SETUP_TASK"
+void setup_task(void *pvParameters) {
+    // setup wifi in APSTA mode
+    LDM::WiFi* wifi = new LDM::WiFi();
+    wifi->init(LDM::WiFi::WiFiSetup::APSTA);
+
+    while(true) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
 
 
 #define SENSOR_TASK_LOG "SENSOR_TASK"
@@ -86,7 +99,7 @@ void sensor_task(void *pvParameters) {
         // If you read the sensor data too often, it will heat up
         // http://www.kandrsmith.org/RJS/Misc/Hygrometers/dht_sht_how_fast.html
         // vTaskDelay(2000 / portTICK_PERIOD_MS);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(100000));
     }
 }
 
