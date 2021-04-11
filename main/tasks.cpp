@@ -36,7 +36,27 @@ void setup_task(void *pvParameters) {
     LDM::WiFi* wifi = new LDM::WiFi();
     wifi->init(LDM::WiFi::WiFiSetup::APSTA);
 
+    // setup http server for modifying devices using REST calls (LEDs, camera, etc.)
+    LDM::HTTP_Server* http_server = new LDM::HTTP_Server(const_cast<char*>(""));
+    httpd_config_t * server_config = http_server->getConfig();
+    server_config->send_wait_timeout = 20;
+
     while(true) {
+        // start onboard HTTP server and register URI target locations for REST handles
+        // TODO: Handle disconnect/stopping server
+        if(wifi->isHosting() && !http_server->isStarted()) {
+            http_server->startServer();
+            if(http_server->isStarted()) {
+                ESP_LOGI(SETUP_TASK_LOG, "Registering HTTP Server URI Handles");
+                http_server->registerUriHandle(&uri_get);
+                // http_server->registerUriHandle(&uri_post);
+                // http_server->registerUriHandle(&uri_data);
+                // http_server->registerUriHandle(&uri_get_camera);
+                // http_server->registerUriHandle(&uri_post_config);
+                // http_server->registerUriHandle(&uri_options_config);
+                // http_server->registerUriHandle(&uri_get_stream);
+            }
+        }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

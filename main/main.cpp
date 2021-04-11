@@ -45,7 +45,7 @@ std::vector<LDM::Sensor*> sensors {
 };
 
 // define various board modes
-enum BoardMode { setup, operational };
+enum BoardMode : uint8_t { setup, operational };
 static BoardMode mode = BoardMode::setup;
 
 uint8_t mac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -68,10 +68,6 @@ void app_main(void) {
     g_nvs = new LDM::NVS();
     g_nvs->openNamespace("system");
 
-    // LDM::NVS nvs;
-    // g_nvs = &nvs;
-    // g_nvs->openNamespace("system");
-
     // TODO: Add different modes of which the board can be in
     if(mode == BoardMode::setup) {
         ESP_LOGI(APP_TAG, "Board in setup mode");
@@ -83,7 +79,6 @@ void app_main(void) {
     // broadcast++;
     // g_nvs->setKeyU8("broadcast", broadcast);
     // g_nvs->commit();
-
 
     // // initialize wifi configurations
     // wifi_config_t wifi_config = {};
