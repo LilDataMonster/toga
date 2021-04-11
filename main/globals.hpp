@@ -11,11 +11,6 @@
 #include <system.hpp>
 
 // probably should avoid to use extern
-#if CONFIG_DHT_SENSOR_ENABLED
-#include <dht.hpp>
-extern LDM::DHT dht;
-#endif
-
 #if CONFIG_BME680_SENSOR_ENABLED
 #include <bme680.hpp>
 extern LDM::BME680 bme680;

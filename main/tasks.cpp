@@ -32,6 +32,8 @@
 #define SENSOR_TASK_LOG "SENSOR_TASK"
 void sensor_task(void *pvParameters) {
 
+    LDM::System system;
+
     // recast array to vector of sensors
     std::vector<LDM::Sensor*> const *sensors = reinterpret_cast<std::vector<LDM::Sensor*> const*>(pvParameters);
 
@@ -61,7 +63,6 @@ void sensor_task(void *pvParameters) {
         json_data = cJSON_CreateObject();
 
         // construct JSON data for system information
-        LDM::System system;
         cJSON *system_json = system.buildJson();
         cJSON_AddItemToObject(json_data, "board", system_json);
 

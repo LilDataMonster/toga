@@ -12,10 +12,6 @@
 
 #define APP_TAG "TOGA"
 
-// TODO: setup different board modes
-// enum BoardMode { setup, sleep };
-// static BoardMode mode = setup;
-
 #include <nvs.hpp>
 #include <sleep.hpp>
 #include <system.hpp>
@@ -48,6 +44,10 @@ std::vector<LDM::Sensor*> sensors {
 #endif
 };
 
+// define various board modes
+enum BoardMode { setup, operational };
+static BoardMode mode = BoardMode::setup;
+
 uint8_t mac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 uint8_t ipv4[4] = {0x00, 0x00, 0x00, 0x00};
 
@@ -66,56 +66,60 @@ void app_main(void) {
     // open the "broadcast" key-value pair from the "state" namespace in NVS
     uint8_t broadcast = 0; // value will default to 0, if not set yet in NVS
 
-    // // initialize wifi configurations
-    // wifi_config_t wifi_config = {};
-    // size_t wifi_size = 0;
 
     // initialize nvs
-    LDM::NVS nvs;
-    g_nvs = &nvs;
+    g_nvs = new LDM::NVS();
     g_nvs->openNamespace("system");
 
-    // load/update 'broadcast' variable in NVS
-    g_nvs->getKeyU8("broadcast", &broadcast);
-    broadcast++;
-    g_nvs->setKeyU8("broadcast", broadcast);
-    g_nvs->commit();
+    // LDM::NVS nvs;
+    // g_nvs = &nvs;
+    // g_nvs->openNamespace("system");
 
-    // uint8_t ssid[32];
-    // uint8_t passwd[128];
+    // TODO: Add different modes of which the board can be in
+    if(mode == BoardMode::setup) {
+        ESP_LOGI(APP_TAG, "Board in setup mode");
+    }
 
-    // // load wifi settings from NVS memory (or set default if wifi settings don't exist)
-    // err = g_nvs->getKeyStr("wifi_ssid", NULL, &wifi_size);      // fetch wifi ssid size (max 32)
-    // if(err == ESP_OK) {
-    //     // g_nvs->getKeyStr("wifi_ssid", (char*)ssid, &wifi_size);
-    //     g_nvs->getKeyStr("wifi_ssid", (char*)wifi_config.sta.ssid, &wifi_size);
-    //     g_nvs->getKeyStr("wifi_password", NULL, &wifi_size);  // fetch wifi ssid size (max 64)
-    //     // g_nvs->getKeyStr("wifi_password", (char*)passwd, &wifi_size);
-    //     g_nvs->getKeyStr("wifi_password", (char*)wifi_config.sta.password, &wifi_size);
-    // } else {
-    //     std::strcpy((char*)ssid, DEFAULT_SSID);
-    //     std::strcpy((char*)passwd, DEFAULT_PWD);
-    //     // std::strcpy((char*)wifi_config.sta.ssid, DEFAULT_SSID);
-    //     // std::strcpy((char*)wifi_config.sta.password, DEFAULT_PWD);
-    // }
-    // g_nvs->close();
+    // // load/update 'broadcast' variable in NVS
+    // g_nvs->getKeyU8("broadcast", &broadcast);
+    // broadcast++;
+    // g_nvs->setKeyU8("broadcast", broadcast);
+    // g_nvs->commit();
+
+
+    // initialize wifi configurations
+    wifi_config_t wifi_config = {};
+    size_t wifi_size = 0;
+
+    uint8_t ssid[32];
+    uint8_t passwd[128];
+
+    // load wifi settings from NVS memory (or set default if wifi settings don't exist)
+    err = g_nvs->getKeyStr("wifi_ssid", NULL, &wifi_size);      // fetch wifi ssid size (max 32)
+    if(err == ESP_OK) {
+        // g_nvs->getKeyStr("wifi_ssid", (char*)ssid, &wifi_size);
+        g_nvs->getKeyStr("wifi_ssid", (char*)wifi_config.sta.ssid, &wifi_size);
+        g_nvs->getKeyStr("wifi_password", NULL, &wifi_size);  // fetch wifi ssid size (max 64)
+        // g_nvs->getKeyStr("wifi_password", (char*)passwd, &wifi_size);
+        g_nvs->getKeyStr("wifi_password", (char*)wifi_config.sta.password, &wifi_size);
+    } else {
+        std::strcpy((char*)ssid, DEFAULT_SSID);
+        std::strcpy((char*)passwd, DEFAULT_PWD);
+        // std::strcpy((char*)wifi_config.sta.ssid, DEFAULT_SSID);
+        // std::strcpy((char*)wifi_config.sta.password, DEFAULT_PWD);
+    }
+    g_nvs->close();
 
     // // setup MAC for broadcasting
     // err = esp_read_mac(mac, ESP_MAC_WIFI_STA);
 
-    // TODO: Add different modes of which the board can be in
-    // if(mode == BoardMode::setup) {
-    //     ESP_LOGI(APP_TAG, "Board in setup mode");
-    // }
-
-    // // initialize bluetooth device
-    // LDM::BLE ble_dev(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
-    // ble_dev.init();                                           // initialize bluetooth
-    // ble_dev.setupDefaultBlufiCallback();                      // setup blufi configuration
-    // ble_dev.initBlufi(&wifi_config);                          // initialize blufi with given wifi configuration
-    // ble_dev.registerGattServerCallback(gatts_event_handler);  // setup ble gatt server callback handle
-    // ble_dev.registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
-    // g_ble = &ble_dev;
+    // initialize bluetooth device
+    g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
+    g_ble->init();                                           // initialize bluetooth
+    g_ble->setupDefaultBlufiCallback();                      // setup blufi configuration
+    g_ble->initBlufi(&wifi_config);                          // initialize blufi with given wifi configuration
+    g_ble->registerGattServerCallback(gatts_event_handler);  // setup ble gatt server callback handle
+    g_ble->registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
 
 //     // initialize sensor
 //     for(auto const& sensor : sensors) {
