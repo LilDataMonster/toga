@@ -2,6 +2,7 @@
 #define SENSORS
 
 #include <sensor.hpp>
+#include <string>
 #include <vector>
 #include <cJSON.h>
 #include <ble.hpp>
@@ -27,6 +28,8 @@ extern LDM::HTTP_Client *g_http_client;
 extern LDM::System *g_system;
 extern LDM::NVS *g_nvs;
 
+extern LDM::WiFi *g_wifi;
+
 extern uint8_t mac[6];
 extern uint8_t ipv4[4];
 
@@ -42,5 +45,9 @@ extern bool is_camera_led_flash_enabled;
 extern uint32_t sleep_period_ms;
 extern uint32_t read_sensor_period_ms;
 extern uint32_t publish_url;
+
+// transmit parameters
+extern std::string g_post_url;
+extern std::string g_firmware_upgrade_url;
 
 #endif

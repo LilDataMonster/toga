@@ -8,7 +8,8 @@
 extern "C" {
 void setup_task(void *pvParameters);
 void sensor_task(void *pvParameters);
-void http_task(void *pvParameters);
+void ble_task(void *pvParameters);
+void transmit_task(void *pvParameters);
 void xbee_task(void *pvParameters);
 void sleep_task(void *pvParameters);
 void led_on_off_task(void *pvParameters);

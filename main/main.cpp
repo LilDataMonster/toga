@@ -20,7 +20,6 @@
 
 #include <uri_handles.hpp>
 #include <globals.hpp>
-#include <ble_services.hpp>
 
 extern "C" {
 void app_main(void);
@@ -37,6 +36,7 @@ LDM::BLE *g_ble = NULL;
 LDM::HTTP_Server *g_http_server = NULL;
 LDM::HTTP_Client *g_http_client = NULL;
 LDM::System *g_system = NULL;
+LDM::WiFi *g_wifi = NULL;
 
 std::vector<LDM::Sensor*> sensors {
 #if CONFIG_BME680_SENSOR_ENABLED
@@ -46,13 +46,16 @@ std::vector<LDM::Sensor*> sensors {
 
 // define various board modes
 enum BoardMode : uint8_t { setup, operational };
-static BoardMode mode = BoardMode::setup;
+// static BoardMode mode = BoardMode::setup;
+static BoardMode mode = BoardMode::operational;
+
 
 uint8_t mac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 uint8_t ipv4[4] = {0x00, 0x00, 0x00, 0x00};
 
 #define APP_MAIN "LDM:Main"
-
+#define STATUS_GPIO GPIO_NUM_2
+#define STATUS_GPIO_SEL GPIO_SEL_2
 void app_main(void) {
 
     esp_err_t err = ESP_OK;
@@ -63,7 +66,6 @@ void app_main(void) {
     // open the "broadcast" key-value pair from the "state" namespace in NVS
     uint8_t broadcast = 0; // value will default to 0, if not set yet in NVS
 
-
     // initialize nvs
     g_nvs = new LDM::NVS();
     g_nvs->openNamespace("system");
@@ -71,6 +73,16 @@ void app_main(void) {
     // TODO: Add different modes of which the board can be in
     if(mode == BoardMode::setup) {
         ESP_LOGI(APP_TAG, "Board in setup mode");
+
+        gpio_config_t io_conf;
+        io_conf.mode = GPIO_MODE_OUTPUT;
+        io_conf.pin_bit_mask = STATUS_GPIO_SEL;
+        io_conf.intr_type = GPIO_INTR_DISABLE;
+        io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
+        io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+        gpio_config(&io_conf);
+
+        gpio_set_level(STATUS_GPIO, 1);
         xTaskCreate(setup_task, "setup_task", 8192, NULL, 5, NULL);
     }
 
@@ -124,8 +136,9 @@ void app_main(void) {
     // setup RTOS tasks
     ESP_LOGI(APP_MAIN, "Setting up RTOS tasks");
     // xTaskCreate(sleep_task, "sleep_task", configMINIMAL_STACK_SIZE, (void*)&sensors, 5, NULL); // task: watcher for initiating sleeps
-    xTaskCreate(sensor_task, "sensor_task", 8192, (void*)&sensors, 5, NULL);                   // task: sensor data (moved into main.cpp)
-//     xTaskCreate(http_task, "http_task", 8192, NULL, 5, NULL);                                     // task: publishing data with REST POST
+    xTaskCreate(sensor_task, "sensor_task", 8192, (void*)&sensors, 5, NULL);                      // task: sensor data
+    // xTaskCreate(transmit_task, "transmit_task", 8192, NULL, 5, NULL);                                     // task: publishing data with REST POST
+    xTaskCreate(ble_task, "ble_task", 8192, NULL, 5, NULL);                                     // task: publishing data with REST POST
 //
 // #if CONFIG_ZIGBEE_ENABLED
 //     xTaskCreate(xbee_task, "xbee_task", 8192, NULL, 5, NULL);

@@ -25,7 +25,9 @@
 
 #include <driver/uart.h>
 #include <driver/gpio.h>
+
 #include <uri_handles.hpp>
+#include <ble_services.hpp>
 
 #include <globals.hpp>
 
@@ -33,8 +35,8 @@
 #define SETUP_TASK_LOG "SETUP_TASK"
 void setup_task(void *pvParameters) {
     // setup wifi in APSTA mode
-    LDM::WiFi* wifi = new LDM::WiFi();
-    wifi->init(LDM::WiFi::WiFiSetup::APSTA);
+    g_wifi = new LDM::WiFi();
+    g_wifi->init(LDM::WiFi::WiFiSetup::APSTA);
 
     // setup http server for modifying devices using REST calls (LEDs, camera, etc.)
     LDM::HTTP_Server* http_server = new LDM::HTTP_Server(const_cast<char*>(""));
@@ -44,7 +46,7 @@ void setup_task(void *pvParameters) {
     while(true) {
         // start onboard HTTP server and register URI target locations for REST handles
         // TODO: Handle disconnect/stopping server
-        if(wifi->isHosting() && !http_server->isStarted()) {
+        if(g_wifi->isHosting() && !http_server->isStarted()) {
             http_server->startServer();
             if(http_server->isStarted()) {
                 ESP_LOGI(SETUP_TASK_LOG, "Registering HTTP Server URI Handles");
@@ -116,22 +118,125 @@ void sensor_task(void *pvParameters) {
             // free(sensor_out);
         }
 
+        bleUpdateBme680();
+
+        uint32_t ms = 1000;
         // If you read the sensor data too often, it will heat up
         // http://www.kandrsmith.org/RJS/Misc/Hygrometers/dht_sht_how_fast.html
         // vTaskDelay(2000 / portTICK_PERIOD_MS);
-        vTaskDelay(pdMS_TO_TICKS(100000));
+        vTaskDelay(pdMS_TO_TICKS(ms));
     }
 }
 
+#define TRANSMIT_TASK_LOG "TRANSMIT_TASK"
+#define HTTP_POST_ENDPOINT CONFIG_ESP_POST_ENDPOINT
+std::string g_post_url = HTTP_POST_ENDPOINT;
 
+#define FIRMWARE_UPGRADE_ENDPOINT CONFIG_FIRMWARE_UPGRADE_ENDPOINT
+std::string g_firmware_upgrade_url = HTTP_POST_ENDPOINT;
+
+cJSON* json_data = NULL;
+void transmit_task(void *pvParameters) {
+
+    // pull HTTP Post destination from NVS memory else use default location (defined by kconfig)
+    // check key and get url size if it exists
+    if(g_nvs != NULL) {
+        size_t endpoint_url_size = 0;
+        g_nvs->openNamespace("url");
+        esp_err_t err = g_nvs->getKeyStr("post", NULL, &endpoint_url_size);
+        if(err == ESP_OK) {
+            char* endpoint_url = (char*)malloc(endpoint_url_size);
+            err = g_nvs->getKeyStr("post", endpoint_url, &endpoint_url_size);
+            if(err != ESP_OK) {
+                ESP_LOGI(TRANSMIT_TASK_LOG, "Error fetching Post URL from NVS, setting to default: %s", endpoint_url);
+            } else {
+                ESP_LOGI(TRANSMIT_TASK_LOG, "Fetched Post URL from NVS: %s", endpoint_url);
+                g_post_url = endpoint_url;
+            }
+            free(endpoint_url);
+        }
+        g_nvs->close();
+    } else {
+        ESP_LOGI(TRANSMIT_TASK_LOG, "No NVS found when fetching Post URL from NVS, setting to default: %s", g_post_url.c_str());
+    }
+
+    // setup wifi
+    g_wifi = new LDM::WiFi();
+    g_wifi->init();
+
+    // initialize HTTP client
+    g_http_client = new LDM::HTTP_Client(const_cast<char*>(g_post_url.c_str()));
+
+#ifdef CONFIG_OTA_ENABLED
+    // setup ota updater and checkUpdates
+    LDM::OTA ota(g_firmware_upgrade_url.c_str());
+#endif
+
+    int num_messages = 0; // temp debug
+    while(true) {
+        if(g_wifi != NULL && g_wifi->isConnected()) {
+            if(json_data != NULL) {
+
+                // POST JSON data
+                g_http_client->postJSON(json_data);
+                // char* post_data = cJSON_Print(json_data);
+                // ESP_LOGI(TRANSMIT_TASK_LOG, "%s", post_data);
+                // http.postFormattedJSON(post_data);
+                // free(post_data);
+            } else {
+                ESP_LOGI(TRANSMIT_TASK_LOG, "SENSOR_JSON value is NULL");
+            }
+#ifdef CONFIG_OTA_ENABLED
+            // check for OTA updates
+            ota.checkUpdates(true);
+#endif
+        } else {
+            ESP_LOGI(TRANSMIT_TASK_LOG, "Wifi is not connected");
+        }
+
+        // temp debug
+        printf("Num Messages: %d\n", num_messages);
+        if(num_messages++ == 3) {
+            break;
+        }
+        uint32_t ms = 1000;
+        vTaskDelay(pdMS_TO_TICKS(ms));
+    }
+    g_http_client->deinit();
+    g_wifi->deinit();
+    g_wifi = NULL;
+
+    // messageFinished = true;
+    vTaskDelete(NULL);
+}
+
+#define BLE_TASK_LOG "BLE_TASK"
+void ble_task(void *pvParameters) {
+    // initialize bluetooth device
+    g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
+    g_ble->init();                                           // initialize bluetooth
+    g_ble->setupDefaultBleGapCallback();                     // setup ble configuration
+
+    // setup BluFi
+    // g_ble->setupDefaultBlufiCallback();                      // setup blufi configuration
+    // g_ble->initBlufi();                                      // initialize blufi with default wifi configuration
+    // g_ble->initBlufi(&wifi_config);                          // initialize blufi with given wifi configuration
+
+    // setup BLE app
+    g_ble->registerGattServerCallback(gatts_event_handler);  // setup ble gatt server callback handle
+    g_ble->registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
+
+    while(true) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+    vTaskDelete(NULL);
+}
 
 
 /***********************************************************************************/
 
 #define SLEEP_DURATION CONFIG_SLEEP_DURATION
 #define BLE_ADVERTISE_DURATION CONFIG_BLE_ADVERTISE_DURATION
-
-cJSON* json_data = NULL;
 
 // sleep task will go to sleep when messageFinished is true
 static bool messageFinished = false;
@@ -209,86 +314,6 @@ void led_fade_task(void *pvParameters) {
         led.setDuty(0, 0);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
-}
-
-
-#define HTTP_POST_ENDPOINT CONFIG_ESP_POST_ENDPOINT
-#define HTTP_TASK_LOG "HTTP_TASK"
-//#define GPIO_OUTPUT_PIN 13
-//#define GPIO_OUTPUT_PIN_SEL  (1ULL << GPIO_OUTPUT_PIN)
-#define FIRMWARE_UPGRADE_ENDPOINT CONFIG_FIRMWARE_UPGRADE_ENDPOINT
-void http_task(void *pvParameters) {
-
-    // setup http client
-    char* endpoint_url = NULL;
-    size_t endpoint_url_size = 0;
-
-    // pull HTTP Post destination from NVS memory else use default location (defined by kconfig)
-    // check key and get url size if it exists
-    if(g_nvs != NULL) {
-        g_nvs->openNamespace("url");
-        esp_err_t err = g_nvs->getKeyStr("post", NULL, &endpoint_url_size);
-        if(err != ESP_OK) {
-            endpoint_url = const_cast<char*>(HTTP_POST_ENDPOINT);
-            if(err == ESP_ERR_NVS_NOT_FOUND) {
-                ESP_LOGI(HTTP_TASK_LOG, "No Post URL found in NVS, setting to default: %s", endpoint_url);
-            }
-        } else {
-            endpoint_url = (char*)malloc(endpoint_url_size);
-            err = g_nvs->getKeyStr("post", endpoint_url, &endpoint_url_size);
-            if(err != ESP_OK) {
-                free(endpoint_url);
-                endpoint_url = const_cast<char*>(HTTP_POST_ENDPOINT);
-                ESP_LOGI(HTTP_TASK_LOG, "Error fetching Post URL from NVS, setting to default: %s", endpoint_url);
-            }
-        }
-        g_nvs->close();
-    } else {
-        endpoint_url = const_cast<char*>(HTTP_POST_ENDPOINT);
-        ESP_LOGI(HTTP_TASK_LOG, "No NVS found when fetching Post URL from NVS, setting to default: %s", endpoint_url);
-    }
-
-    // initialize HTTP client
-    LDM::HTTP_Client http(endpoint_url);
-    g_http_client = &http;
-
-#ifdef CONFIG_OTA_ENABLED
-    // setup ota updater and checkUpdates
-    LDM::OTA ota(const_cast<char*>(FIRMWARE_UPGRADE_ENDPOINT));
-#endif
-
-    while(true) {
-        if(g_ble->wifi.isConnected()) {
-            if(json_data != NULL) {
-
-                // POST JSON data
-                http.postJSON(json_data);
-                // char* post_data = cJSON_Print(json_data);
-                // ESP_LOGI(HTTP_TASK_LOG, "%s", post_data);
-                // http.postFormattedJSON(post_data);
-                // free(post_data);
-            } else {
-                ESP_LOGI(HTTP_TASK_LOG, "SENSOR_JSON value is NULL");
-            }
-#ifdef CONFIG_OTA_ENABLED
-            // check for OTA updates
-            ota.checkUpdates(true);
-#endif
-        } else {
-            ESP_LOGI(HTTP_TASK_LOG, "Wifi is not connected");
-        }
-        vTaskDelay(pdMS_TO_TICKS(60000));
-    }
-    // // cleanup JSON message
-    // cJSON_Delete(message);
-    // message = NULL;
-
-    // vEventGroupDelete(s_wifi_event_group);
-    // wifi.deinit_sta();
-    http.deinit();
-
-    // messageFinished = true;
-    // vTaskDelete(NULL);
 }
 
 #define XBEE_TASK_LOG "XBEE_TASK"

@@ -1,3 +1,6 @@
+#include <algorithm>
+#include <vector>
+
 #include <esp_gatts_api.h>
 #include <esp_log.h>
 #include <globals.hpp>
@@ -8,8 +11,10 @@
 // define memory locations for ble data
 float dht_data[2] = {0.0f, 0.0f};
 float bme680_data[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+uint8_t bme_notify = 0x00;
+static std::vector<uint16_t> bleBme680ConnIds;
 
-uint32_t gatt_handle_table[LDM_IDX_NB];
+uint16_t gatt_handle_table[LDM_IDX_NB];
 
 /* The max length of characteristic value. When the GATT client performs a write or prepare write operation,
 *  the data length must be less than GATTS_DEMO_CHAR_VAL_LEN_MAX.
@@ -67,12 +72,27 @@ const esp_gatts_attr_db_t gatt_db[LDM_IDX_NB] = {
     /* BME680 Sensor Characteristic Declaration */
     [LDM_BME680_CHAR]      =
     {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ,
-      sizeof(uint8_t), sizeof(uint8_t), (uint8_t *)&char_prop_read}},
+      sizeof(uint8_t), sizeof(uint8_t), (uint8_t *)&char_prop_read_notify}},
 
     /* BME680 Sensor Characteristic Value */
     [LDM_BME680_VAL]  =
     {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&GATTS_CHAR_UUID_BME680, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
     GATTS_LDM_CHAR_VAL_LEN_MAX, sizeof(bme680_data), (uint8_t *)&bme680_data}},
+
+    // /* BME680 Sensor Notify Characteristic Declaration */
+    // [LDM_BME680_NOTIFY_CHAR]      =
+    // {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ,
+    //   sizeof(uint8_t), sizeof(uint8_t), (uint8_t *)&char_prop_read_write_notify}},
+
+    /* BME680 Sensor Characteristic Configuration Descriptor */
+    [LDM_BME680_CFG]  =
+    {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_client_config_uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+      sizeof(uint16_t), sizeof(bme_notify), (uint8_t *)&bme_notify}},
+
+    // /* BME680 Sensor Notify Characteristic Value */
+    // [LDM_BME680_NOTIFY_VAL]  =
+    // {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&GATTS_NOTIFY_UUID_BME680, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+    // GATTS_LDM_CHAR_VAL_LEN_MAX, sizeof(bme_notify), (uint8_t *)&bme_notify}},
 #endif
 
 };
@@ -109,7 +129,7 @@ esp_err_t bleUpdateDht(void) {
     dht_data[1] = dht.getTemperature();
 
     // update bluetooth values for dht sensor data
-    esp_err_t err = esp_ble_gatts_set_attr_value(gatt_handle_table[3], sizeof(dht_data), (uint8_t*)dht_data);
+    esp_err_t err = esp_ble_gatts_set_attr_value(gatt_handle_table[LDM_DHT_VAL], sizeof(dht_data), (uint8_t*)dht_data);
     if(err != ESP_OK) {
         ESP_LOGE(BLE_SERVICE_TAG, "Failed to send GATTS Attribute on handle %d : %s",
                                   gatt_handle_table[3], esp_err_to_name(err));
@@ -119,26 +139,28 @@ esp_err_t bleUpdateDht(void) {
 #endif
 
 #if CONFIG_BME680_SENSOR_ENABLED
-
-// update index to be after DHT index if it is also present
-#if CONFIG_DHT_SENSOR_ENABLED
-#define BME680_HANDLE_INDEX 4
-#else
-#define BME680_HANDLE_INDEX 3
-#endif
-
 esp_err_t bleUpdateBme680(void) {
+    esp_err_t err = ESP_OK;
+
     // populate array of data to form ble packet
     bme680_data[0] = bme680.getHumidity();
     bme680_data[1] = bme680.getTemperature();
     bme680_data[2] = bme680.getPressure();
     bme680_data[3] = bme680.getGas();
 
-    // update bluetooth values for bme680 sensor data
-    esp_err_t err = esp_ble_gatts_set_attr_value(gatt_handle_table[BME680_HANDLE_INDEX], sizeof(bme680_data), (uint8_t*)bme680_data);
+    // update characteristic values
+    err = esp_ble_gatts_set_attr_value(gatt_handle_table[LDM_BME680_VAL], sizeof(bme680_data), (uint8_t*)bme680_data);
     if(err != ESP_OK) {
-        ESP_LOGE(BLE_SERVICE_TAG, "Failed to send GATTS Attribute on handle %d : %s",
-                                  gatt_handle_table[BME680_HANDLE_INDEX], esp_err_to_name(err));
+        ESP_LOGE(BLE_SERVICE_TAG, "Failed to send GATTS Attribute on handle %d : %s", gatt_handle_table[LDM_BME680_VAL], esp_err_to_name(err));
+    }
+
+    // notify all connections of new data and send new data
+    for (auto & conn_id : bleBme680ConnIds) {
+        // the size of notify_data[] need less than MTU size
+        err = esp_ble_gatts_send_indicate(server_gatts_if, conn_id, gatt_handle_table[LDM_BME680_VAL], sizeof(bme680_data), (uint8_t*)bme680_data, false);
+        if(err != ESP_OK) {
+            ESP_LOGI(BLE_SERVICE_TAG, "Failed to notify connection_id %d: esp_ble_gatts_send_indicate returned: %s", conn_id, esp_err_to_name(err));
+        }
     }
     return err;
 }
@@ -147,10 +169,19 @@ esp_err_t bleUpdateBme680(void) {
 void gatts_profile_event_handler(esp_gatts_cb_event_t event,
 					esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t *param);
 
+/* One gatt-based profile one app_id and one gatts_if, this array will store the gatts_if returned by ESP_GATTS_REG_EVT */
+struct gatts_profile_inst gatt_profile_tab[PROFILE_NUM] = {
+    [PROFILE_APP_IDX] = {
+        .gatts_cb = gatts_profile_event_handler,
+        .gatts_if = ESP_GATT_IF_NONE,       /* Not get the gatt_if, so initial is ESP_GATT_IF_NONE */
+    },
+};
+
 
 void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t *param) {
     switch (event) {
         case ESP_GATTS_REG_EVT: {
+            server_gatts_if = gatts_if;
             esp_err_t create_attr_ret = esp_ble_gatts_create_attr_tab(gatt_db, gatts_if, LDM_IDX_NB, SVC_INST_ID);
             if(create_attr_ret != ESP_OK) {
                 ESP_LOGE(BLE_SERVICE_TAG, "Create attr table failed, error %s", esp_err_to_name(create_attr_ret));
@@ -164,6 +195,47 @@ void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts
         case ESP_GATTS_WRITE_EVT:
             ESP_LOGI(BLE_SERVICE_TAG, "ESP_GATTS_WRITE_EVT, conn_id %d, trans_id %d, handle %d\n",
                       param->write.conn_id, param->write.trans_id, param->write.handle);
+
+            if (!param->write.is_prep) {
+                // ESP_LOGI(BLE_SERVICE_TAG, "GATT_WRITE_EVT, value len %d, value :", param->write.len);
+                // esp_log_buffer_hex(BLE_SERVICE_TAG, param->write.value, param->write.len);
+
+                // ESP_LOGI(BLE_SERVICE_TAG, "GATT_WRITE_EVT, descr_handle: %d, write.handle: %d, write.len: %u",
+                //     gatt_profile_tab[PROFILE_APP_IDX].descr_handle, param->write.handle, param->write.len);
+
+                // ESP_LOGI(BLE_SERVICE_TAG, "GATT_WRITE_EVT, profile_tab: gatts_if: %d, app_id: %d, conn_id: %d, service_handle: %d, char_handle: %d, descr_handle: %d",
+                //             gatt_profile_tab[PROFILE_APP_IDX].gatts_if, gatt_profile_tab[PROFILE_APP_IDX].app_id, gatt_profile_tab[PROFILE_APP_IDX].conn_id,
+                //             gatt_profile_tab[PROFILE_APP_IDX].service_handle, gatt_profile_tab[PROFILE_APP_IDX].char_handle, gatt_profile_tab[PROFILE_APP_IDX].descr_handle);
+                // ESP_LOGI(BLE_SERVICE_TAG, "GATT_WRITE_EVT, params.conn_id: %d, params.trans_id: %d, params.handle: %d, params.offset: %d, params.need_rsp: %d, params.is_prep: %d, params.len: %d",
+                //             param->write.conn_id, param->write.trans_id, param->write.handle, param->write.offset, param->write.need_rsp, param->write.is_prep, param->write.len);
+
+                if(gatt_handle_table[LDM_BME680_CFG] == param->write.handle) {
+                    uint16_t descr_value = param->write.value[1]<<8 | param->write.value[0];
+                    ESP_LOGI(BLE_SERVICE_TAG, "GATT_WRITE_EVT, BIT_NOTIFY: %x, bme_notify: %x", ESP_GATT_CHAR_PROP_BIT_NOTIFY, descr_value);
+                    if(descr_value == 0x0001) {
+                        ESP_LOGI(BLE_SERVICE_TAG, "GATT_WRITE_EVT, Notifications enabled on connection: %d", param->write.conn_id);
+                        bleBme680ConnIds.push_back(param->write.conn_id);
+                    } else if(descr_value == 0x0002) {
+                        ESP_LOGI(BLE_SERVICE_TAG, "GATT_WRITE_EVT, Indications enabled on connection: %d", param->write.conn_id);
+                        // uint8_t indicate_data[15];
+                        // for (int i = 0; i < sizeof(indicate_data); ++i) {
+                        //     indicate_data[i] = i % 0xff;
+                        // }
+                        // //the size of indicate_data[] need less than MTU size
+                        // esp_ble_gatts_send_indicate(gatts_if, param->write.conn_id,
+                        //     gatt_handle_table[LDM_BME680_VAL], sizeof(indicate_data), indicate_data, true);
+                    } else if(descr_value == 0x0000) {
+                        ESP_LOGI(BLE_SERVICE_TAG, "GATT_WRITE_EVT, Notifications/Indications disabled on connection: %d", param->write.conn_id);
+                        bleBme680ConnIds.erase(
+                            std::remove(bleBme680ConnIds.begin(), bleBme680ConnIds.end(), param->write.conn_id),
+                            bleBme680ConnIds.end()
+                        );
+                    } else {
+                        ESP_LOGE(BLE_SERVICE_TAG, "GATT_WRITE_EVT, Unknown description value from connection: %d", param->write.conn_id);
+                        esp_log_buffer_hex(BLE_SERVICE_TAG, param->write.value, param->write.len);
+                    }
+                }
+            }
             break;
         case ESP_GATTS_EXEC_WRITE_EVT:
             // the length of gattc prepare write data must be less than GATTS_DEMO_CHAR_VAL_LEN_MAX.
@@ -194,7 +266,12 @@ void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts
             break;
         case ESP_GATTS_DISCONNECT_EVT:
             ESP_LOGI(BLE_SERVICE_TAG, "ESP_GATTS_DISCONNECT_EVT, reason = 0x%x", param->disconnect.reason);
+            bleBme680ConnIds.erase(
+                std::remove(bleBme680ConnIds.begin(), bleBme680ConnIds.end(), param->disconnect.conn_id),
+                bleBme680ConnIds.end()
+            );
             // esp_ble_gap_start_advertising(&adv_params);
+            esp_ble_gap_start_advertising(&LDM::BLE::default_ble_adv_params);
             break;
         case ESP_GATTS_CREAT_ATTR_TAB_EVT:{
             ESP_LOGI(BLE_SERVICE_TAG, "The number handle =%x\n", param->add_attr_tab.num_handle);
@@ -208,6 +285,12 @@ void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts
             else {
                 ESP_LOGI(BLE_SERVICE_TAG, "Create attribute table successfully, the number handle = %d\n",param->add_attr_tab.num_handle);
                 memcpy(gatt_handle_table, param->add_attr_tab.handles, sizeof(gatt_handle_table));
+
+                ESP_LOGI(BLE_SERVICE_TAG, "Updated Attribute Handles:");
+                for(int ii=0; ii<LDM_IDX_NB; ii++) {
+                    ESP_LOGI(BLE_SERVICE_TAG, "Handle %d: %d", ii, param->add_attr_tab.handles[ii]);
+                }
+
                 esp_err_t err = esp_ble_gatts_start_service(gatt_handle_table[LDM_IDX_SVC]);
                 if(err != ESP_OK) {
                     ESP_LOGE(BLE_SERVICE_TAG, "Failed to start GATTS Service");
@@ -228,15 +311,6 @@ void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts
             break;
     }
 }
-
-/* One gatt-based profile one app_id and one gatts_if, this array will store the gatts_if returned by ESP_GATTS_REG_EVT */
-struct gatts_profile_inst gatt_profile_tab[PROFILE_NUM] = {
-    [PROFILE_APP_IDX] = {
-        .gatts_cb = gatts_profile_event_handler,
-        .gatts_if = ESP_GATT_IF_NONE,       /* Not get the gatt_if, so initial is ESP_GATT_IF_NONE */
-    },
-};
-
 
 void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t *param) {
     /* If event is register event, store the gatts_if for each profile */
