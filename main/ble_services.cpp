@@ -79,20 +79,10 @@ const esp_gatts_attr_db_t gatt_db[LDM_IDX_NB] = {
     {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&GATTS_CHAR_UUID_BME680, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
     GATTS_LDM_CHAR_VAL_LEN_MAX, sizeof(bme680_data), (uint8_t *)&bme680_data}},
 
-    // /* BME680 Sensor Notify Characteristic Declaration */
-    // [LDM_BME680_NOTIFY_CHAR]      =
-    // {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ,
-    //   sizeof(uint8_t), sizeof(uint8_t), (uint8_t *)&char_prop_read_write_notify}},
-
     /* BME680 Sensor Characteristic Configuration Descriptor */
     [LDM_BME680_CFG]  =
     {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_client_config_uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
-      sizeof(uint16_t), sizeof(bme_notify), (uint8_t *)&bme_notify}},
-
-    // /* BME680 Sensor Notify Characteristic Value */
-    // [LDM_BME680_NOTIFY_VAL]  =
-    // {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&GATTS_NOTIFY_UUID_BME680, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
-    // GATTS_LDM_CHAR_VAL_LEN_MAX, sizeof(bme_notify), (uint8_t *)&bme_notify}},
+    sizeof(uint16_t), sizeof(bme_notify), (uint8_t *)&bme_notify}},
 #endif
 
 };
