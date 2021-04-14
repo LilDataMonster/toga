@@ -228,6 +228,18 @@ void transmit_task(void *pvParameters) {
 
 #define BLE_TASK_LOG "BLE_TASK"
 void ble_task(void *pvParameters) {
+    transmit_t *ble_transmitter = NULL;
+    for(auto &transmitter : transmitters) {
+        if(transmitter.protocol == Protocol::ble) {
+            ble_transmitter = &transmitter;
+            break;
+        }
+    }
+    if(ble_transmitter == NULL) {
+        ESP_LOGE(BLE_TASK_LOG, "BLE scheduler not found, removing task");
+        vTaskDelete(NULL);
+    }
+
     // initialize bluetooth device
     g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
     g_ble->init();                                           // initialize bluetooth
@@ -243,8 +255,8 @@ void ble_task(void *pvParameters) {
     g_ble->registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
 
     while(true) {
+        ESP_LOGI(BLE_TASK_LOG, "BLE duration is: %u: enabled: %u", ble_transmitter->duration, ble_transmitter->enabled);
         vTaskDelay(pdMS_TO_TICKS(20000));
-        break;
     }
     g_ble->deinit();
     delete g_ble;
