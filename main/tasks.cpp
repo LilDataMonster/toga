@@ -227,8 +227,12 @@ void ble_task(void *pvParameters) {
     g_ble->registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
 
     while(true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(20000));
+        break;
     }
+    g_ble->deinit();
+    g_ble = NULL;
+    printf("Closing ble");
     vTaskDelete(NULL);
 }
 

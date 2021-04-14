@@ -114,12 +114,18 @@ esp_err_t bleUpdateIpv4(void) {
 
 #if CONFIG_DHT_SENSOR_ENABLED
 esp_err_t bleUpdateDht(void) {
+    esp_err_t err = ESP_OK;
+
+    if(g_ble == NULL) {
+        return err;
+    }
+
     // populate array of data to form ble packet
     dht_data[0] = dht.getHumidity();
     dht_data[1] = dht.getTemperature();
 
     // update bluetooth values for dht sensor data
-    esp_err_t err = esp_ble_gatts_set_attr_value(gatt_handle_table[LDM_DHT_VAL], sizeof(dht_data), (uint8_t*)dht_data);
+    err = esp_ble_gatts_set_attr_value(gatt_handle_table[LDM_DHT_VAL], sizeof(dht_data), (uint8_t*)dht_data);
     if(err != ESP_OK) {
         ESP_LOGE(BLE_SERVICE_TAG, "Failed to send GATTS Attribute on handle %d : %s",
                                   gatt_handle_table[3], esp_err_to_name(err));
@@ -131,6 +137,10 @@ esp_err_t bleUpdateDht(void) {
 #if CONFIG_BME680_SENSOR_ENABLED
 esp_err_t bleUpdateBme680(void) {
     esp_err_t err = ESP_OK;
+
+    if(g_ble == NULL) {
+        return err;
+    }
 
     // populate array of data to form ble packet
     bme680_data[0] = bme680.getHumidity();
