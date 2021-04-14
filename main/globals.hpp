@@ -50,4 +50,15 @@ extern uint32_t publish_url;
 extern std::string g_post_url;
 extern std::string g_firmware_upgrade_url;
 
+// build vector of transmitters to enable transitions between transmitters
+typedef struct{
+    uint8_t protocol;
+    bool enabled;
+    uint32_t duration;
+    char* name;
+} transmit_t;
+
+enum Protocol : uint8_t { wifi, ble, xbee };
+extern std::vector<transmit_t> transmitters;
+
 #endif

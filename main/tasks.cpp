@@ -32,6 +32,22 @@
 #include <globals.hpp>
 
 
+#define TRANSMIT_SCHEDULER_TASK_LOG "TRANSMIT_SCHEDULER_TASK"
+void transmit_scheduler_task(void *pvParameters) {
+
+    while(true) {
+        for(auto & transmitter : transmitters) {
+            ESP_LOGI(TRANSMIT_SCHEDULER_TASK_LOG, "Enabling transmitter: %s for %u ms", transmitter.name, transmitter.duration);
+            transmitter.enabled = true;;
+
+            vTaskDelay(pdMS_TO_TICKS(transmitter.duration));
+
+            ESP_LOGI(TRANSMIT_SCHEDULER_TASK_LOG, "Disabling transmitter: %s for %u ms", transmitter.name, transmitter.duration);
+            transmitter.enabled = false;
+        }
+    }
+}
+
 #define SETUP_TASK_LOG "SETUP_TASK"
 void setup_task(void *pvParameters) {
     // setup wifi in APSTA mode
@@ -231,8 +247,9 @@ void ble_task(void *pvParameters) {
         break;
     }
     g_ble->deinit();
+    delete g_ble;
     g_ble = NULL;
-    printf("Closing ble");
+
     vTaskDelete(NULL);
 }
 

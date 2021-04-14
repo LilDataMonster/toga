@@ -44,6 +44,12 @@ std::vector<LDM::Sensor*> sensors {
 #endif
 };
 
+std::vector<transmit_t> transmitters {
+    {Protocol::wifi, false, 20000, "wifi"},
+    {Protocol::ble,  false, 20000, "ble"},
+    {Protocol::xbee, false, 20000, "xbee"},
+};
+
 // define various board modes
 enum BoardMode : uint8_t { setup, operational };
 // static BoardMode mode = BoardMode::setup;
@@ -136,6 +142,7 @@ void app_main(void) {
     // setup RTOS tasks
     ESP_LOGI(APP_MAIN, "Setting up RTOS tasks");
     // xTaskCreate(sleep_task, "sleep_task", configMINIMAL_STACK_SIZE, (void*)&sensors, 5, NULL); // task: watcher for initiating sleeps
+    xTaskCreate(transmit_scheduler_task, "transmit_scheduler_task", 8192, NULL, 5, NULL); // task: cycle through timings of different transmitters
     xTaskCreate(sensor_task, "sensor_task", 8192, (void*)&sensors, 5, NULL);                      // task: sensor data
     // xTaskCreate(transmit_task, "transmit_task", 8192, NULL, 5, NULL);                                     // task: publishing data with REST POST
     xTaskCreate(ble_task, "ble_task", 8192, NULL, 5, NULL);                                     // task: publishing data with REST POST
