@@ -108,7 +108,7 @@ void sensor_task(void *pvParameters) {
     while(true){
         // obtain a mutex to the json_data
         if(xSemaphoreTake(json_mutex, (TickType_t) 100 ) == pdTRUE) {
-            ESP_LOGI(SENSOR_TASK_LOG, "Obtained Mutex");
+            // ESP_LOGI(SENSOR_TASK_LOG, "Obtained Mutex");
 
             // create a fresh JSON buffer (delete/free existing buffer if one already exists)
             if(json_data != NULL) {
@@ -138,7 +138,7 @@ void sensor_task(void *pvParameters) {
                 // free(sensor_out);
             }
             // release mutex to json_data
-            ESP_LOGI(SENSOR_TASK_LOG, "Released Mutex");
+            // ESP_LOGI(SENSOR_TASK_LOG, "Released Mutex");
             xSemaphoreGive(json_mutex);
         }
 
@@ -220,7 +220,7 @@ void wifi_task(void *pvParameters) {
             if(g_wifi != NULL && g_wifi->isConnected()) {
                 // post message if data avaliable to publish
                 if(xSemaphoreTake(json_mutex, (TickType_t) 100 ) == pdTRUE) {
-                    ESP_LOGI(WIFI_TASK_LOG, "Obtained Mutex");
+                    // ESP_LOGI(WIFI_TASK_LOG, "Obtained Mutex");
                     if(json_data != NULL) {
                         // POST JSON data
                         g_http_client->postJSON(json_data);
@@ -232,7 +232,7 @@ void wifi_task(void *pvParameters) {
                     } else {
                         ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON value is NULL");
                     }
-                    ESP_LOGI(WIFI_TASK_LOG, "Released Mutex");
+                    // ESP_LOGI(WIFI_TASK_LOG, "Released Mutex");
                     xSemaphoreGive(json_mutex);
                 }
 #ifdef CONFIG_OTA_ENABLED
