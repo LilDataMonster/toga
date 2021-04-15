@@ -196,7 +196,7 @@ void wifi_task(void *pvParameters) {
     while(true) {
         // check if ble should be enabled
         if(wifi_transmitter->enabled) {
-            // initialize bluetooth device
+            // initialize wifi device
             if(g_wifi == NULL) {
                 ESP_LOGI(WIFI_TASK_LOG, "Enabling WiFi");
                 g_wifi = new LDM::WiFi();
@@ -230,6 +230,7 @@ void wifi_task(void *pvParameters) {
                 ESP_LOGI(WIFI_TASK_LOG, "Wifi is not connected");
             }
         } else {
+            // deinitialize wifi device
             if(g_wifi != NULL) {
                 ESP_LOGI(WIFI_TASK_LOG, "Disabling WiFi");
                 g_http_client->deinit();
@@ -334,6 +335,7 @@ void ble_task(void *pvParameters) {
                 ESP_LOGI(BLE_TASK_LOG, "Enabled BLE");
             }
         } else {
+            // deinitialize bluetooth device
             if(g_ble != NULL) {
                 ESP_LOGI(BLE_TASK_LOG, "Disabling BLE");
                 g_ble->deinit();
@@ -455,40 +457,67 @@ void led_fade_task(void *pvParameters) {
 }
 
 #define XBEE_TASK_LOG "XBEE_TASK"
-const int RX_BUF_SIZE = 1024;
+#define RX_BUF_SIZE 1024;
 #define TXD_PIN (GPIO_NUM_23)
 #define RXD_PIN (GPIO_NUM_22)
 void xbee_task(void *pvParameters) {
-    const uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_APB,
-    };
-
-    uart_driver_install(UART_NUM_1, RX_BUF_SIZE * 4, RX_BUF_SIZE * 4, 0, NULL, 0);
-    uart_param_config(UART_NUM_1, &uart_config);
-    uart_set_pin(UART_NUM_1, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    const char *TX_TASK_TAG = "TX_TASK";
-    vTaskDelay(pdMS_TO_TICKS(30000));
-    while(true) {
-        if(json_data != NULL) {
-
-            // POST JSON data
-            char *post_data = cJSON_Print(json_data);
-
-            const int len = strlen(post_data);
-            esp_log_level_set(TX_TASK_TAG, ESP_LOG_INFO);
-            const int txBytes = uart_write_bytes(UART_NUM_1, post_data, len);
-            ESP_LOGI(TX_TASK_TAG, "Wrote %d bytes", txBytes);
-            printf("%s\n", post_data);
-        } else {
-            ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON value is NULL");
+    // get transmitter scheduler handle
+    transmit_t *xbee_transmitter = NULL;
+    for(auto &transmitter : transmitters) {
+        if(transmitter.protocol == Protocol::xbee) {
+            xbee_transmitter = &transmitter;
+            break;
         }
-        vTaskDelay(pdMS_TO_TICKS(60000));
     }
+    if(xbee_transmitter == NULL) {
+        ESP_LOGE(XBEE_TASK_LOG, "XBEE scheduler not found, removing task");
+        vTaskDelete(NULL);
+    }
+
+    while(true) {
+        // check if ble should be enabled
+        if(xbee_transmitter->enabled) {
+            // initialize xbee device
+            // if(g_ble == NULL) {
+            // }
+        } else {
+            // deinitialize xbee device
+            // if(g_ble != NULL) {
+            // }
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    // const uart_config_t uart_config = {
+    //     .baud_rate = 115200,
+    //     .data_bits = UART_DATA_8_BITS,
+    //     .parity = UART_PARITY_DISABLE,
+    //     .stop_bits = UART_STOP_BITS_1,
+    //     .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    //     .source_clk = UART_SCLK_APB,
+    // };
+    //
+    // uart_driver_install(UART_NUM_1, RX_BUF_SIZE * 4, RX_BUF_SIZE * 4, 0, NULL, 0);
+    // uart_param_config(UART_NUM_1, &uart_config);
+    // uart_set_pin(UART_NUM_1, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    // const char *TX_TASK_TAG = "TX_TASK";
+    // vTaskDelay(pdMS_TO_TICKS(30000));
+    // while(true) {
+    //     if(json_data != NULL) {
+    //
+    //         // POST JSON data
+    //         char *post_data = cJSON_Print(json_data);
+    //
+    //         const int len = strlen(post_data);
+    //         esp_log_level_set(TX_TASK_TAG, ESP_LOG_INFO);
+    //         const int txBytes = uart_write_bytes(UART_NUM_1, post_data, len);
+    //         ESP_LOGI(TX_TASK_TAG, "Wrote %d bytes", txBytes);
+    //         printf("%s\n", post_data);
+    //     } else {
+    //         ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON value is NULL");
+    //     }
+    //     vTaskDelay(pdMS_TO_TICKS(60000));
+    // }
 
 }
 
