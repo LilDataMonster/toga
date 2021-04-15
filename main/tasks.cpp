@@ -106,32 +106,40 @@ void sensor_task(void *pvParameters) {
 
     // read sensors
     while(true){
-        // create a fresh JSON buffer (delete/free existing buffer if one already exists)
-        if(json_data != NULL) {
-            cJSON_Delete(json_data);
-            json_data = NULL;
-        }
-        json_data = cJSON_CreateObject();
+        // obtain a mutex to the json_data
+        if(xSemaphoreTake(json_mutex, (TickType_t) 100 ) == pdTRUE) {
+            // ESP_LOGI(SENSOR_TASK_LOG, "Obtained Mutex");
 
-        // construct JSON data for system information
-        cJSON *system_json = system.buildJson();
-        cJSON_AddItemToObject(json_data, "board", system_json);
+            // create a fresh JSON buffer (delete/free existing buffer if one already exists)
+            if(json_data != NULL) {
+                cJSON_Delete(json_data);
+                json_data = NULL;
+            }
+            json_data = cJSON_CreateObject();
 
-        // loop through sensors and collect sensor data
-        for(auto const& sensor : *sensors) {
-            ESP_LOGI(SENSOR_TASK_LOG, "Reading Sensor: %s", sensor->getSensorName());
+            // construct JSON data for system information
+            cJSON *system_json = system.buildJson();
+            cJSON_AddItemToObject(json_data, "board", system_json);
 
-            // read sensor
-            sensor->readSensor();
+            // loop through sensors and collect sensor data
+            for(auto const& sensor : *sensors) {
+                ESP_LOGI(SENSOR_TASK_LOG, "Reading Sensor: %s", sensor->getSensorName());
 
-            // create JSON data containing sensor information
-            cJSON *sensor_json = sensor->buildJson();
-            cJSON_AddItemToObject(json_data, sensor->getSensorName(), sensor_json);
-            sensor->releaseData();
+                // read sensor
+                sensor->readSensor();
 
-            // char* sensor_out = cJSON_Print(sensor_json);
-            // printf("%s\n", sensor_out);
-            // free(sensor_out);
+                // create JSON data containing sensor information
+                cJSON *sensor_json = sensor->buildJson();
+                cJSON_AddItemToObject(json_data, sensor->getSensorName(), sensor_json);
+                sensor->releaseData();
+
+                // char* sensor_out = cJSON_Print(sensor_json);
+                // printf("%s\n", sensor_out);
+                // free(sensor_out);
+            }
+            // release mutex to json_data
+            // ESP_LOGI(SENSOR_TASK_LOG, "Released Mutex");
+            xSemaphoreGive(json_mutex);
         }
 
         bleUpdateBme680();
@@ -144,7 +152,7 @@ void sensor_task(void *pvParameters) {
     }
 }
 
-#define TRANSMIT_TASK_LOG "TRANSMIT_TASK"
+#define WIFI_TASK_LOG "WIFI_TASK"
 #define HTTP_POST_ENDPOINT CONFIG_ESP_POST_ENDPOINT
 std::string g_post_url = HTTP_POST_ENDPOINT;
 
@@ -152,7 +160,19 @@ std::string g_post_url = HTTP_POST_ENDPOINT;
 std::string g_firmware_upgrade_url = HTTP_POST_ENDPOINT;
 
 cJSON* json_data = NULL;
-void transmit_task(void *pvParameters) {
+void wifi_task(void *pvParameters) {
+    // get transmitter scheduler handle
+    transmit_t *wifi_transmitter = NULL;
+    for(auto &transmitter : transmitters) {
+        if(transmitter.protocol == Protocol::wifi) {
+            wifi_transmitter = &transmitter;
+            break;
+        }
+    }
+    if(wifi_transmitter == NULL) {
+        ESP_LOGE(WIFI_TASK_LOG, "WiFi scheduler not found, removing task");
+        vTaskDelete(NULL);
+    }
 
     // pull HTTP Post destination from NVS memory else use default location (defined by kconfig)
     // check key and get url size if it exists
@@ -164,93 +184,205 @@ void transmit_task(void *pvParameters) {
             char* endpoint_url = (char*)malloc(endpoint_url_size);
             err = g_nvs->getKeyStr("post", endpoint_url, &endpoint_url_size);
             if(err != ESP_OK) {
-                ESP_LOGI(TRANSMIT_TASK_LOG, "Error fetching Post URL from NVS, setting to default: %s", endpoint_url);
+                ESP_LOGI(WIFI_TASK_LOG, "Error fetching Post URL from NVS, setting to default: %s", endpoint_url);
             } else {
-                ESP_LOGI(TRANSMIT_TASK_LOG, "Fetched Post URL from NVS: %s", endpoint_url);
+                ESP_LOGI(WIFI_TASK_LOG, "Fetched Post URL from NVS: %s", endpoint_url);
                 g_post_url = endpoint_url;
             }
             free(endpoint_url);
         }
         g_nvs->close();
     } else {
-        ESP_LOGI(TRANSMIT_TASK_LOG, "No NVS found when fetching Post URL from NVS, setting to default: %s", g_post_url.c_str());
+        ESP_LOGI(WIFI_TASK_LOG, "No NVS found when fetching Post URL from NVS, setting to default: %s", g_post_url.c_str());
     }
-
-    // setup wifi
-    g_wifi = new LDM::WiFi();
-    g_wifi->init();
-
-    // initialize HTTP client
-    g_http_client = new LDM::HTTP_Client(const_cast<char*>(g_post_url.c_str()));
 
 #ifdef CONFIG_OTA_ENABLED
     // setup ota updater and checkUpdates
     LDM::OTA ota(g_firmware_upgrade_url.c_str());
 #endif
 
-    int num_messages = 0; // temp debug
     while(true) {
-        if(g_wifi != NULL && g_wifi->isConnected()) {
-            if(json_data != NULL) {
+        // check if ble should be enabled
+        if(wifi_transmitter->enabled) {
+            // initialize wifi device
+            if(g_wifi == NULL) {
+                ESP_LOGI(WIFI_TASK_LOG, "Enabling WiFi");
+                g_wifi = new LDM::WiFi();
+                g_wifi->init();
 
-                // POST JSON data
-                g_http_client->postJSON(json_data);
-                // char* post_data = cJSON_Print(json_data);
-                // ESP_LOGI(TRANSMIT_TASK_LOG, "%s", post_data);
-                // http.postFormattedJSON(post_data);
-                // free(post_data);
-            } else {
-                ESP_LOGI(TRANSMIT_TASK_LOG, "SENSOR_JSON value is NULL");
+                // initialize HTTP client
+                g_http_client = new LDM::HTTP_Client(const_cast<char*>(g_post_url.c_str()));
+
+                ESP_LOGI(WIFI_TASK_LOG, "Enabled WiFi");
             }
+
+            // check if wifi is connected and valid
+            if(g_wifi != NULL && g_wifi->isConnected()) {
+                // post message if data avaliable to publish
+                if(xSemaphoreTake(json_mutex, (TickType_t) 100 ) == pdTRUE) {
+                    // ESP_LOGI(WIFI_TASK_LOG, "Obtained Mutex");
+                    if(json_data != NULL) {
+                        // POST JSON data
+                        g_http_client->postJSON(json_data);
+                        // char* post_data = cJSON_Print(json_data);
+                        // ESP_LOGI(WIFI_TASK_LOG, "%s", post_data);
+                        // http.postFormattedJSON(post_data);
+                        // free(post_data);
+                        ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON data sent");
+                    } else {
+                        ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON value is NULL");
+                    }
+                    // ESP_LOGI(WIFI_TASK_LOG, "Released Mutex");
+                    xSemaphoreGive(json_mutex);
+                }
 #ifdef CONFIG_OTA_ENABLED
-            // check for OTA updates
-            ota.checkUpdates(true);
+                // check for OTA updates
+                ota.checkUpdates(true);
 #endif
+            } else {
+                ESP_LOGI(WIFI_TASK_LOG, "Wifi is not connected");
+            }
         } else {
-            ESP_LOGI(TRANSMIT_TASK_LOG, "Wifi is not connected");
-        }
+            // deinitialize wifi device
+            if(g_wifi != NULL) {
+                ESP_LOGI(WIFI_TASK_LOG, "Disabling WiFi");
+                g_http_client->deinit();
+                g_wifi->deinit();
 
-        // temp debug
-        printf("Num Messages: %d\n", num_messages);
-        if(num_messages++ == 3) {
-            break;
+                delete g_wifi;
+                delete g_http_client;
+
+                g_wifi = NULL;
+                g_http_client = NULL;
+                ESP_LOGI(WIFI_TASK_LOG, "Disabled WiFi");
+            }
         }
-        uint32_t ms = 1000;
-        vTaskDelay(pdMS_TO_TICKS(ms));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    g_http_client->deinit();
-    g_wifi->deinit();
-    g_wifi = NULL;
 
-    // messageFinished = true;
-    vTaskDelete(NULL);
+//     // setup wifi
+//     g_wifi = new LDM::WiFi();
+//     g_wifi->init();
+//
+//     // initialize HTTP client
+//     g_http_client = new LDM::HTTP_Client(const_cast<char*>(g_post_url.c_str()));
+//
+// #ifdef CONFIG_OTA_ENABLED
+//     // setup ota updater and checkUpdates
+//     LDM::OTA ota(g_firmware_upgrade_url.c_str());
+// #endif
+//
+//     int num_messages = 0; // temp debug
+//     while(true) {
+//         if(g_wifi != NULL && g_wifi->isConnected()) {
+//             if(json_data != NULL) {
+//
+//                 // POST JSON data
+//                 g_http_client->postJSON(json_data);
+//                 // char* post_data = cJSON_Print(json_data);
+//                 // ESP_LOGI(WIFI_TASK_LOG, "%s", post_data);
+//                 // http.postFormattedJSON(post_data);
+//                 // free(post_data);
+//             } else {
+//                 ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON value is NULL");
+//             }
+// #ifdef CONFIG_OTA_ENABLED
+//             // check for OTA updates
+//             ota.checkUpdates(true);
+// #endif
+//         } else {
+//             ESP_LOGI(WIFI_TASK_LOG, "Wifi is not connected");
+//         }
+//
+//         // temp debug
+//         printf("Num Messages: %d\n", num_messages);
+//         if(num_messages++ == 3) {
+//             break;
+//         }
+//         uint32_t ms = 1000;
+//         vTaskDelay(pdMS_TO_TICKS(ms));
+//     }
+//     g_http_client->deinit();
+//     g_wifi->deinit();
+//     g_wifi = NULL;
+//     g_http_client = NULL;
+//
+//     // messageFinished = true;
+//     vTaskDelete(NULL);
 }
 
 #define BLE_TASK_LOG "BLE_TASK"
 void ble_task(void *pvParameters) {
-    // initialize bluetooth device
-    g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
-    g_ble->init();                                           // initialize bluetooth
-    g_ble->setupDefaultBleGapCallback();                     // setup ble configuration
-
-    // setup BluFi
-    // g_ble->setupDefaultBlufiCallback();                      // setup blufi configuration
-    // g_ble->initBlufi();                                      // initialize blufi with default wifi configuration
-    // g_ble->initBlufi(&wifi_config);                          // initialize blufi with given wifi configuration
-
-    // setup BLE app
-    g_ble->registerGattServerCallback(gatts_event_handler);  // setup ble gatt server callback handle
-    g_ble->registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
+    // get transmitter scheduler handle
+    transmit_t *ble_transmitter = NULL;
+    for(auto &transmitter : transmitters) {
+        if(transmitter.protocol == Protocol::ble) {
+            ble_transmitter = &transmitter;
+            break;
+        }
+    }
+    if(ble_transmitter == NULL) {
+        ESP_LOGE(BLE_TASK_LOG, "BLE scheduler not found, removing task");
+        vTaskDelete(NULL);
+    }
 
     while(true) {
-        vTaskDelay(pdMS_TO_TICKS(20000));
-        break;
-    }
-    g_ble->deinit();
-    delete g_ble;
-    g_ble = NULL;
+        // check if ble should be enabled
+        if(ble_transmitter->enabled) {
+            // initialize bluetooth device
+            if(g_ble == NULL) {
+                ESP_LOGI(BLE_TASK_LOG, "Enabling BLE");
+                g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
+                g_ble->init();                                           // initialize bluetooth
+                g_ble->setupDefaultBleGapCallback();                     // setup ble configuration
 
-    vTaskDelete(NULL);
+                // setup BluFi
+                // g_ble->setupDefaultBlufiCallback();                      // setup blufi configuration
+                // g_ble->initBlufi();                                      // initialize blufi with default wifi configuration
+                // g_ble->initBlufi(&wifi_config);                          // initialize blufi with given wifi configuration
+
+                // setup BLE app
+                g_ble->registerGattServerCallback(gatts_event_handler);  // setup ble gatt server callback handle
+                g_ble->registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
+
+                ESP_LOGI(BLE_TASK_LOG, "Enabled BLE");
+            }
+        } else {
+            // deinitialize bluetooth device
+            if(g_ble != NULL) {
+                ESP_LOGI(BLE_TASK_LOG, "Disabling BLE");
+                g_ble->deinit();
+                delete g_ble;
+                g_ble = NULL;
+                ESP_LOGI(BLE_TASK_LOG, "Disabled BLE");
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    // // initialize bluetooth device
+    // g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
+    // g_ble->init();                                           // initialize bluetooth
+    // g_ble->setupDefaultBleGapCallback();                     // setup ble configuration
+    //
+    // // setup BluFi
+    // // g_ble->setupDefaultBlufiCallback();                      // setup blufi configuration
+    // // g_ble->initBlufi();                                      // initialize blufi with default wifi configuration
+    // // g_ble->initBlufi(&wifi_config);                          // initialize blufi with given wifi configuration
+    //
+    // // setup BLE app
+    // g_ble->registerGattServerCallback(gatts_event_handler);  // setup ble gatt server callback handle
+    // g_ble->registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
+    //
+    // while(true) {
+    //     ESP_LOGI(BLE_TASK_LOG, "BLE duration is: %u: enabled: %u", ble_transmitter->duration, ble_transmitter->enabled);
+    //     vTaskDelay(pdMS_TO_TICKS(20000));
+    // }
+    // g_ble->deinit();
+    // delete g_ble;
+    // g_ble = NULL;
+    //
+    // vTaskDelete(NULL);
 }
 
 
@@ -338,40 +470,67 @@ void led_fade_task(void *pvParameters) {
 }
 
 #define XBEE_TASK_LOG "XBEE_TASK"
-const int RX_BUF_SIZE = 1024;
+#define RX_BUF_SIZE 1024;
 #define TXD_PIN (GPIO_NUM_23)
 #define RXD_PIN (GPIO_NUM_22)
 void xbee_task(void *pvParameters) {
-    const uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_APB,
-    };
-
-    uart_driver_install(UART_NUM_1, RX_BUF_SIZE * 4, RX_BUF_SIZE * 4, 0, NULL, 0);
-    uart_param_config(UART_NUM_1, &uart_config);
-    uart_set_pin(UART_NUM_1, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    const char *TX_TASK_TAG = "TX_TASK";
-    vTaskDelay(pdMS_TO_TICKS(30000));
-    while(true) {
-        if(json_data != NULL) {
-
-            // POST JSON data
-            char *post_data = cJSON_Print(json_data);
-
-            const int len = strlen(post_data);
-            esp_log_level_set(TX_TASK_TAG, ESP_LOG_INFO);
-            const int txBytes = uart_write_bytes(UART_NUM_1, post_data, len);
-            ESP_LOGI(TX_TASK_TAG, "Wrote %d bytes", txBytes);
-            printf("%s\n", post_data);
-        } else {
-            ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON value is NULL");
+    // get transmitter scheduler handle
+    transmit_t *xbee_transmitter = NULL;
+    for(auto &transmitter : transmitters) {
+        if(transmitter.protocol == Protocol::xbee) {
+            xbee_transmitter = &transmitter;
+            break;
         }
-        vTaskDelay(pdMS_TO_TICKS(60000));
     }
+    if(xbee_transmitter == NULL) {
+        ESP_LOGE(XBEE_TASK_LOG, "XBEE scheduler not found, removing task");
+        vTaskDelete(NULL);
+    }
+
+    while(true) {
+        // check if ble should be enabled
+        if(xbee_transmitter->enabled) {
+            // initialize xbee device
+            // if(g_ble == NULL) {
+            // }
+        } else {
+            // deinitialize xbee device
+            // if(g_ble != NULL) {
+            // }
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    // const uart_config_t uart_config = {
+    //     .baud_rate = 115200,
+    //     .data_bits = UART_DATA_8_BITS,
+    //     .parity = UART_PARITY_DISABLE,
+    //     .stop_bits = UART_STOP_BITS_1,
+    //     .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    //     .source_clk = UART_SCLK_APB,
+    // };
+    //
+    // uart_driver_install(UART_NUM_1, RX_BUF_SIZE * 4, RX_BUF_SIZE * 4, 0, NULL, 0);
+    // uart_param_config(UART_NUM_1, &uart_config);
+    // uart_set_pin(UART_NUM_1, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    // const char *TX_TASK_TAG = "TX_TASK";
+    // vTaskDelay(pdMS_TO_TICKS(30000));
+    // while(true) {
+    //     if(json_data != NULL) {
+    //
+    //         // POST JSON data
+    //         char *post_data = cJSON_Print(json_data);
+    //
+    //         const int len = strlen(post_data);
+    //         esp_log_level_set(TX_TASK_TAG, ESP_LOG_INFO);
+    //         const int txBytes = uart_write_bytes(UART_NUM_1, post_data, len);
+    //         ESP_LOGI(TX_TASK_TAG, "Wrote %d bytes", txBytes);
+    //         printf("%s\n", post_data);
+    //     } else {
+    //         ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON value is NULL");
+    //     }
+    //     vTaskDelay(pdMS_TO_TICKS(60000));
+    // }
 
 }
 
