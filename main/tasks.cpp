@@ -22,6 +22,7 @@
 #include <ble.hpp>
 #include <system.hpp>
 #include <wifi.hpp>
+#include <mdns.hpp>
 
 #include <driver/uart.h>
 #include <driver/gpio.h>
@@ -59,7 +60,11 @@ void setup_task(void *pvParameters) {
     httpd_config_t * server_config = http_server->getConfig();
     server_config->send_wait_timeout = 20;
 
-    while(true) {
+    // initialize mdns
+    LDM::MDNS mdns;
+    mdns.init();
+
+    while(mode == BoardMode::setup) {
         // start onboard HTTP server and register URI target locations for REST handles
         // TODO: Handle disconnect/stopping server
         if(g_wifi->isHosting() && !http_server->isStarted()) {
@@ -70,13 +75,24 @@ void setup_task(void *pvParameters) {
                 // http_server->registerUriHandle(&uri_post);
                 // http_server->registerUriHandle(&uri_data);
                 // http_server->registerUriHandle(&uri_get_camera);
-                // http_server->registerUriHandle(&uri_post_config);
+                http_server->registerUriHandle(&uri_post_config);
                 // http_server->registerUriHandle(&uri_options_config);
                 // http_server->registerUriHandle(&uri_get_stream);
             }
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+
+    mdns.deinit();
+
+    delete http_server;
+    http_server = NULL;
+
+    g_wifi->deinit();
+    delete g_wifi;
+    g_wifi = NULL;
+
+    vTaskDelete(NULL);
 }
 
 

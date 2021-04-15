@@ -20,6 +20,10 @@
 extern LDM::BME680 bme680;
 #endif
 
+// define various board modes
+enum BoardMode : uint8_t { setup, operational };
+extern BoardMode mode;
+
 // initialize vector of sensors
 extern std::vector<LDM::Sensor*> sensors;
 

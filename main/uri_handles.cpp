@@ -334,6 +334,57 @@ esp_err_t config_post_handler(httpd_req_t *req) {
         ESP_LOGI(TAG, "LED Configuration Not Found");
     }
 
+    // configure board
+    cJSON *board_json = cJSON_GetObjectItemCaseSensitive(root, "board");
+    if(cJSON_IsObject(board_json)) {
+        cJSON *wifi_ms_json = cJSON_GetObjectItemCaseSensitive(board_json, "wifi_duration");
+        if(cJSON_IsNumber(wifi_ms_json)) {
+            for(auto &transmitter : transmitters) {
+                if(transmitter.protocol == Protocol::wifi) {
+                    transmitter.duration = wifi_ms_json->valueint;
+                }
+            }
+            ESP_LOGI(TAG, "wifi_ms_json set: %d ms", wifi_ms_json->valueint);
+        } else {
+            ESP_LOGI(TAG, "wifi_ms_json not found");
+        }
+
+        cJSON *ble_ms_json = cJSON_GetObjectItemCaseSensitive(board_json, "ble_duration");
+        if(cJSON_IsNumber(ble_ms_json)) {
+            for(auto &transmitter : transmitters) {
+                if(transmitter.protocol == Protocol::ble) {
+                    transmitter.duration = ble_ms_json->valueint;
+                }
+            }
+            ESP_LOGI(TAG, "ble_ms_json set: %d ms", ble_ms_json->valueint);
+        } else {
+            ESP_LOGI(TAG, "ble_ms_json not found");
+        }
+
+        cJSON *xbee_ms_json = cJSON_GetObjectItemCaseSensitive(board_json, "xbee_duration");
+        if(cJSON_IsNumber(xbee_ms_json)) {
+            for(auto &transmitter : transmitters) {
+                if(transmitter.protocol == Protocol::xbee) {
+                    transmitter.duration = xbee_ms_json->valueint;
+                }
+            }
+            ESP_LOGI(TAG, "xbee_ms_json set: %d ms", xbee_ms_json->valueint);
+        } else {
+            ESP_LOGI(TAG, "xbee_ms_json not found");
+        }
+
+        // check this last
+        cJSON *operational_en_json = cJSON_GetObjectItemCaseSensitive(board_json, "operational");
+        if(cJSON_IsBool(operational_en_json)) {
+            mode = cJSON_IsTrue(operational_en_json) ? BoardMode::operational : BoardMode::setup;
+            ESP_LOGI(TAG, "Exitting Setup Mode: %s", (cJSON_IsTrue(operational_en_json)?"True":"False"));
+        } else {
+            ESP_LOGI(TAG, "operational not found");
+        }
+    } else {
+        ESP_LOGI(TAG, "Board Configuration Not Found");
+    }
+
     // configure url
     cJSON *report_json = cJSON_GetObjectItemCaseSensitive(root, "report");
     if(cJSON_IsObject(report_json)) {
@@ -365,7 +416,7 @@ esp_err_t config_post_handler(httpd_req_t *req) {
     }
 
     cJSON_Delete(root);
-    httpd_resp_sendstr(req, "Camera Parameters Updated successfully");
+    httpd_resp_sendstr(req, "Configuration Updated successfully");
 
     return res;
 };
