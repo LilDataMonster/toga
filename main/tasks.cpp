@@ -106,32 +106,40 @@ void sensor_task(void *pvParameters) {
 
     // read sensors
     while(true){
-        // create a fresh JSON buffer (delete/free existing buffer if one already exists)
-        if(json_data != NULL) {
-            cJSON_Delete(json_data);
-            json_data = NULL;
-        }
-        json_data = cJSON_CreateObject();
+        // obtain a mutex to the json_data
+        if(xSemaphoreTake(json_mutex, (TickType_t) 100 ) == pdTRUE) {
+            ESP_LOGI(SENSOR_TASK_LOG, "Obtained Mutex");
 
-        // construct JSON data for system information
-        cJSON *system_json = system.buildJson();
-        cJSON_AddItemToObject(json_data, "board", system_json);
+            // create a fresh JSON buffer (delete/free existing buffer if one already exists)
+            if(json_data != NULL) {
+                cJSON_Delete(json_data);
+                json_data = NULL;
+            }
+            json_data = cJSON_CreateObject();
 
-        // loop through sensors and collect sensor data
-        for(auto const& sensor : *sensors) {
-            ESP_LOGI(SENSOR_TASK_LOG, "Reading Sensor: %s", sensor->getSensorName());
+            // construct JSON data for system information
+            cJSON *system_json = system.buildJson();
+            cJSON_AddItemToObject(json_data, "board", system_json);
 
-            // read sensor
-            sensor->readSensor();
+            // loop through sensors and collect sensor data
+            for(auto const& sensor : *sensors) {
+                ESP_LOGI(SENSOR_TASK_LOG, "Reading Sensor: %s", sensor->getSensorName());
 
-            // create JSON data containing sensor information
-            cJSON *sensor_json = sensor->buildJson();
-            cJSON_AddItemToObject(json_data, sensor->getSensorName(), sensor_json);
-            sensor->releaseData();
+                // read sensor
+                sensor->readSensor();
 
-            // char* sensor_out = cJSON_Print(sensor_json);
-            // printf("%s\n", sensor_out);
-            // free(sensor_out);
+                // create JSON data containing sensor information
+                cJSON *sensor_json = sensor->buildJson();
+                cJSON_AddItemToObject(json_data, sensor->getSensorName(), sensor_json);
+                sensor->releaseData();
+
+                // char* sensor_out = cJSON_Print(sensor_json);
+                // printf("%s\n", sensor_out);
+                // free(sensor_out);
+            }
+            // release mutex to json_data
+            ESP_LOGI(SENSOR_TASK_LOG, "Released Mutex");
+            xSemaphoreGive(json_mutex);
         }
 
         bleUpdateBme680();
@@ -144,7 +152,7 @@ void sensor_task(void *pvParameters) {
     }
 }
 
-#define WIFI_TASK_LOG "TRANSMIT_TASK"
+#define WIFI_TASK_LOG "WIFI_TASK"
 #define HTTP_POST_ENDPOINT CONFIG_ESP_POST_ENDPOINT
 std::string g_post_url = HTTP_POST_ENDPOINT;
 
@@ -211,16 +219,21 @@ void wifi_task(void *pvParameters) {
             // check if wifi is connected and valid
             if(g_wifi != NULL && g_wifi->isConnected()) {
                 // post message if data avaliable to publish
-                if(json_data != NULL) {
-                    // POST JSON data
-                    g_http_client->postJSON(json_data);
-                    // char* post_data = cJSON_Print(json_data);
-                    // ESP_LOGI(WIFI_TASK_LOG, "%s", post_data);
-                    // http.postFormattedJSON(post_data);
-                    // free(post_data);
-                    ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON data sent");
-                } else {
-                    ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON value is NULL");
+                if(xSemaphoreTake(json_mutex, (TickType_t) 100 ) == pdTRUE) {
+                    ESP_LOGI(WIFI_TASK_LOG, "Obtained Mutex");
+                    if(json_data != NULL) {
+                        // POST JSON data
+                        g_http_client->postJSON(json_data);
+                        // char* post_data = cJSON_Print(json_data);
+                        // ESP_LOGI(WIFI_TASK_LOG, "%s", post_data);
+                        // http.postFormattedJSON(post_data);
+                        // free(post_data);
+                        ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON data sent");
+                    } else {
+                        ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON value is NULL");
+                    }
+                    ESP_LOGI(WIFI_TASK_LOG, "Released Mutex");
+                    xSemaphoreGive(json_mutex);
                 }
 #ifdef CONFIG_OTA_ENABLED
                 // check for OTA updates

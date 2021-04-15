@@ -30,6 +30,8 @@ void app_main(void);
 LDM::BME680 bme680;
 #endif
 
+SemaphoreHandle_t json_mutex = xSemaphoreCreateMutex();
+
 // define extern variables
 LDM::NVS *g_nvs = NULL;
 LDM::BLE *g_ble = NULL;
@@ -144,7 +146,7 @@ void app_main(void) {
     // xTaskCreate(sleep_task, "sleep_task", configMINIMAL_STACK_SIZE, (void*)&sensors, 5, NULL); // task: watcher for initiating sleeps
     xTaskCreate(transmit_scheduler_task, "transmit_scheduler_task", 8192, NULL, 5, NULL); // task: cycle through timings of different transmitters
     xTaskCreate(sensor_task, "sensor_task", 8192, (void*)&sensors, 5, NULL);                      // task: sensor data
-    xTaskCreate(wifi_task, "wifi_task", 8192, NULL, 5, NULL);                                     // task: publishing data with REST POST
+    xTaskCreate(wifi_task, "wifi_task", 8192*10, NULL, 5, NULL);                                     // task: publishing data with REST POST
     xTaskCreate(ble_task, "ble_task", 8192, NULL, 5, NULL);                                     // task: publishing data with REST POST
 //
 // #if CONFIG_ZIGBEE_ENABLED

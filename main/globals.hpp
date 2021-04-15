@@ -2,6 +2,9 @@
 #define SENSORS
 
 #include <sensor.hpp>
+
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <string>
 #include <vector>
 #include <cJSON.h>
@@ -22,6 +25,8 @@ extern std::vector<LDM::Sensor*> sensors;
 
 // global handles
 extern cJSON * json_data;
+extern SemaphoreHandle_t json_mutex;
+
 extern LDM::BLE *g_ble;
 extern LDM::HTTP_Server *g_http_server;
 extern LDM::HTTP_Client *g_http_client;
