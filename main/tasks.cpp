@@ -144,7 +144,7 @@ void sensor_task(void *pvParameters) {
     }
 }
 
-#define TRANSMIT_TASK_LOG "TRANSMIT_TASK"
+#define WIFI_TASK_LOG "TRANSMIT_TASK"
 #define HTTP_POST_ENDPOINT CONFIG_ESP_POST_ENDPOINT
 std::string g_post_url = HTTP_POST_ENDPOINT;
 
@@ -152,7 +152,19 @@ std::string g_post_url = HTTP_POST_ENDPOINT;
 std::string g_firmware_upgrade_url = HTTP_POST_ENDPOINT;
 
 cJSON* json_data = NULL;
-void transmit_task(void *pvParameters) {
+void wifi_task(void *pvParameters) {
+    // get transmitter scheduler handle
+    transmit_t *wifi_transmitter = NULL;
+    for(auto &transmitter : transmitters) {
+        if(transmitter.protocol == Protocol::wifi) {
+            wifi_transmitter = &transmitter;
+            break;
+        }
+    }
+    if(wifi_transmitter == NULL) {
+        ESP_LOGE(WIFI_TASK_LOG, "WiFi scheduler not found, removing task");
+        vTaskDelete(NULL);
+    }
 
     // pull HTTP Post destination from NVS memory else use default location (defined by kconfig)
     // check key and get url size if it exists
@@ -164,70 +176,130 @@ void transmit_task(void *pvParameters) {
             char* endpoint_url = (char*)malloc(endpoint_url_size);
             err = g_nvs->getKeyStr("post", endpoint_url, &endpoint_url_size);
             if(err != ESP_OK) {
-                ESP_LOGI(TRANSMIT_TASK_LOG, "Error fetching Post URL from NVS, setting to default: %s", endpoint_url);
+                ESP_LOGI(WIFI_TASK_LOG, "Error fetching Post URL from NVS, setting to default: %s", endpoint_url);
             } else {
-                ESP_LOGI(TRANSMIT_TASK_LOG, "Fetched Post URL from NVS: %s", endpoint_url);
+                ESP_LOGI(WIFI_TASK_LOG, "Fetched Post URL from NVS: %s", endpoint_url);
                 g_post_url = endpoint_url;
             }
             free(endpoint_url);
         }
         g_nvs->close();
     } else {
-        ESP_LOGI(TRANSMIT_TASK_LOG, "No NVS found when fetching Post URL from NVS, setting to default: %s", g_post_url.c_str());
+        ESP_LOGI(WIFI_TASK_LOG, "No NVS found when fetching Post URL from NVS, setting to default: %s", g_post_url.c_str());
     }
-
-    // setup wifi
-    g_wifi = new LDM::WiFi();
-    g_wifi->init();
-
-    // initialize HTTP client
-    g_http_client = new LDM::HTTP_Client(const_cast<char*>(g_post_url.c_str()));
 
 #ifdef CONFIG_OTA_ENABLED
     // setup ota updater and checkUpdates
     LDM::OTA ota(g_firmware_upgrade_url.c_str());
 #endif
 
-    int num_messages = 0; // temp debug
     while(true) {
-        if(g_wifi != NULL && g_wifi->isConnected()) {
-            if(json_data != NULL) {
+        // check if ble should be enabled
+        if(wifi_transmitter->enabled) {
+            // initialize bluetooth device
+            if(g_wifi == NULL) {
+                ESP_LOGI(WIFI_TASK_LOG, "Enabling WiFi");
+                g_wifi = new LDM::WiFi();
+                g_wifi->init();
 
-                // POST JSON data
-                g_http_client->postJSON(json_data);
-                // char* post_data = cJSON_Print(json_data);
-                // ESP_LOGI(TRANSMIT_TASK_LOG, "%s", post_data);
-                // http.postFormattedJSON(post_data);
-                // free(post_data);
-            } else {
-                ESP_LOGI(TRANSMIT_TASK_LOG, "SENSOR_JSON value is NULL");
+                // initialize HTTP client
+                g_http_client = new LDM::HTTP_Client(const_cast<char*>(g_post_url.c_str()));
+
+                ESP_LOGI(WIFI_TASK_LOG, "Enabled WiFi");
             }
+
+            // check if wifi is connected and valid
+            if(g_wifi != NULL && g_wifi->isConnected()) {
+                // post message if data avaliable to publish
+                if(json_data != NULL) {
+                    // POST JSON data
+                    g_http_client->postJSON(json_data);
+                    // char* post_data = cJSON_Print(json_data);
+                    // ESP_LOGI(WIFI_TASK_LOG, "%s", post_data);
+                    // http.postFormattedJSON(post_data);
+                    // free(post_data);
+                    ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON data sent");
+                } else {
+                    ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON value is NULL");
+                }
 #ifdef CONFIG_OTA_ENABLED
-            // check for OTA updates
-            ota.checkUpdates(true);
+                // check for OTA updates
+                ota.checkUpdates(true);
 #endif
+            } else {
+                ESP_LOGI(WIFI_TASK_LOG, "Wifi is not connected");
+            }
         } else {
-            ESP_LOGI(TRANSMIT_TASK_LOG, "Wifi is not connected");
-        }
+            if(g_wifi != NULL) {
+                ESP_LOGI(WIFI_TASK_LOG, "Disabling WiFi");
+                g_http_client->deinit();
+                g_wifi->deinit();
 
-        // temp debug
-        printf("Num Messages: %d\n", num_messages);
-        if(num_messages++ == 3) {
-            break;
+                delete g_wifi;
+                delete g_http_client;
+
+                g_wifi = NULL;
+                g_http_client = NULL;
+                ESP_LOGI(WIFI_TASK_LOG, "Disabled WiFi");
+            }
         }
-        uint32_t ms = 1000;
-        vTaskDelay(pdMS_TO_TICKS(ms));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    g_http_client->deinit();
-    g_wifi->deinit();
-    g_wifi = NULL;
 
-    // messageFinished = true;
-    vTaskDelete(NULL);
+//     // setup wifi
+//     g_wifi = new LDM::WiFi();
+//     g_wifi->init();
+//
+//     // initialize HTTP client
+//     g_http_client = new LDM::HTTP_Client(const_cast<char*>(g_post_url.c_str()));
+//
+// #ifdef CONFIG_OTA_ENABLED
+//     // setup ota updater and checkUpdates
+//     LDM::OTA ota(g_firmware_upgrade_url.c_str());
+// #endif
+//
+//     int num_messages = 0; // temp debug
+//     while(true) {
+//         if(g_wifi != NULL && g_wifi->isConnected()) {
+//             if(json_data != NULL) {
+//
+//                 // POST JSON data
+//                 g_http_client->postJSON(json_data);
+//                 // char* post_data = cJSON_Print(json_data);
+//                 // ESP_LOGI(WIFI_TASK_LOG, "%s", post_data);
+//                 // http.postFormattedJSON(post_data);
+//                 // free(post_data);
+//             } else {
+//                 ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON value is NULL");
+//             }
+// #ifdef CONFIG_OTA_ENABLED
+//             // check for OTA updates
+//             ota.checkUpdates(true);
+// #endif
+//         } else {
+//             ESP_LOGI(WIFI_TASK_LOG, "Wifi is not connected");
+//         }
+//
+//         // temp debug
+//         printf("Num Messages: %d\n", num_messages);
+//         if(num_messages++ == 3) {
+//             break;
+//         }
+//         uint32_t ms = 1000;
+//         vTaskDelay(pdMS_TO_TICKS(ms));
+//     }
+//     g_http_client->deinit();
+//     g_wifi->deinit();
+//     g_wifi = NULL;
+//     g_http_client = NULL;
+//
+//     // messageFinished = true;
+//     vTaskDelete(NULL);
 }
 
 #define BLE_TASK_LOG "BLE_TASK"
 void ble_task(void *pvParameters) {
+    // get transmitter scheduler handle
     transmit_t *ble_transmitter = NULL;
     for(auto &transmitter : transmitters) {
         if(transmitter.protocol == Protocol::ble) {
@@ -240,29 +312,62 @@ void ble_task(void *pvParameters) {
         vTaskDelete(NULL);
     }
 
-    // initialize bluetooth device
-    g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
-    g_ble->init();                                           // initialize bluetooth
-    g_ble->setupDefaultBleGapCallback();                     // setup ble configuration
-
-    // setup BluFi
-    // g_ble->setupDefaultBlufiCallback();                      // setup blufi configuration
-    // g_ble->initBlufi();                                      // initialize blufi with default wifi configuration
-    // g_ble->initBlufi(&wifi_config);                          // initialize blufi with given wifi configuration
-
-    // setup BLE app
-    g_ble->registerGattServerCallback(gatts_event_handler);  // setup ble gatt server callback handle
-    g_ble->registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
-
     while(true) {
-        ESP_LOGI(BLE_TASK_LOG, "BLE duration is: %u: enabled: %u", ble_transmitter->duration, ble_transmitter->enabled);
-        vTaskDelay(pdMS_TO_TICKS(20000));
-    }
-    g_ble->deinit();
-    delete g_ble;
-    g_ble = NULL;
+        // check if ble should be enabled
+        if(ble_transmitter->enabled) {
+            // initialize bluetooth device
+            if(g_ble == NULL) {
+                ESP_LOGI(BLE_TASK_LOG, "Enabling BLE");
+                g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
+                g_ble->init();                                           // initialize bluetooth
+                g_ble->setupDefaultBleGapCallback();                     // setup ble configuration
 
-    vTaskDelete(NULL);
+                // setup BluFi
+                // g_ble->setupDefaultBlufiCallback();                      // setup blufi configuration
+                // g_ble->initBlufi();                                      // initialize blufi with default wifi configuration
+                // g_ble->initBlufi(&wifi_config);                          // initialize blufi with given wifi configuration
+
+                // setup BLE app
+                g_ble->registerGattServerCallback(gatts_event_handler);  // setup ble gatt server callback handle
+                g_ble->registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
+
+                ESP_LOGI(BLE_TASK_LOG, "Enabled BLE");
+            }
+        } else {
+            if(g_ble != NULL) {
+                ESP_LOGI(BLE_TASK_LOG, "Disabling BLE");
+                g_ble->deinit();
+                delete g_ble;
+                g_ble = NULL;
+                ESP_LOGI(BLE_TASK_LOG, "Disabled BLE");
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    // // initialize bluetooth device
+    // g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
+    // g_ble->init();                                           // initialize bluetooth
+    // g_ble->setupDefaultBleGapCallback();                     // setup ble configuration
+    //
+    // // setup BluFi
+    // // g_ble->setupDefaultBlufiCallback();                      // setup blufi configuration
+    // // g_ble->initBlufi();                                      // initialize blufi with default wifi configuration
+    // // g_ble->initBlufi(&wifi_config);                          // initialize blufi with given wifi configuration
+    //
+    // // setup BLE app
+    // g_ble->registerGattServerCallback(gatts_event_handler);  // setup ble gatt server callback handle
+    // g_ble->registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
+    //
+    // while(true) {
+    //     ESP_LOGI(BLE_TASK_LOG, "BLE duration is: %u: enabled: %u", ble_transmitter->duration, ble_transmitter->enabled);
+    //     vTaskDelay(pdMS_TO_TICKS(20000));
+    // }
+    // g_ble->deinit();
+    // delete g_ble;
+    // g_ble = NULL;
+    //
+    // vTaskDelete(NULL);
 }
 
 
