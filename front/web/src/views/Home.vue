@@ -10,6 +10,30 @@
               <br/>
               <span class="grey--text">ESP cores: {{cores}}</span>
               <br/>
+              <v-card-text>
+                <v-container fluid grid-list-lg>
+                  <v-layout row wrap>
+                    <v-flex xs8>
+                      <v-slider v-model="wifi_duration" :min="10000" :max="9999999" label="WiFi Duration (ms)"></v-slider>
+                    </v-flex>
+                    <v-flex xs4>
+                      <v-text-field v-model="wifi_duration" class="mt-0" type="number"></v-text-field>
+                    </v-flex>
+                    <v-flex xs8>
+                      <v-slider v-model="ble_duration" :min="10000" :max="9999999" label="BLE Duration (ms)"></v-slider>
+                    </v-flex>
+                    <v-flex xs4>
+                      <v-text-field v-model="ble_duration" class="mt-0" type="number"></v-text-field>
+                    </v-flex>
+                    <v-flex xs8>
+                      <v-slider v-model="xbee_duration" :min="10000" :max="9999999" label="XBee Duration (ms)"></v-slider>
+                    </v-flex>
+                    <v-flex xs4>
+                      <v-text-field v-model="xbee_duration" class="mt-0" type="number"></v-text-field>
+                    </v-flex>
+                  </v-layout>
+                </v-container>
+              </v-card-text>
             </div>
             <v-btn fab dark large color="purple darken-3" @click="start_board">
               <v-icon dark>check_box</v-icon>
@@ -26,16 +50,21 @@ export default {
   data() {
     return {
       version: null,
-      cores: null
+      cores: null,
+      wifi_duration: 120000,
+      ble_duration: 120000,
+      xbee_duration: 120000
     };
   },
   methods: {
     start_board: function() {
       this.$ajax
         .post("/config", {
-          operational: true,
-          ble_duration: 120000,
-          wifi_duration: 120000
+          board: {
+            operational: true,
+            wifi_duration: wifi_duration,
+            ble_duration: ble_duration
+          }
         })
         .then(data => {
           console.log(data);
