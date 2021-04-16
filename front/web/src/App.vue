@@ -28,17 +28,17 @@
         </v-list-tile>
       </v-list>
     </v-navigation-drawer>
-    <v-toolbar color="red accent-4" dark fixed app clipped-left>
+    <v-toolbar color="purple darken-3" dark fixed app clipped-left>
       <v-toolbar-side-icon @click.stop="drawer = !drawer"></v-toolbar-side-icon>
-      <v-toolbar-title>ESP Home</v-toolbar-title>
+      <v-toolbar-title>Lil Data Monster</v-toolbar-title>
     </v-toolbar>
     <v-content>
       <v-container fluid fill-height>
         <router-view></router-view>
       </v-container>
     </v-content>
-    <v-footer color="red accent-4" app fixed>
-      <span class="white--text">&copy; ESPRESSIF SYSTEMS (SHANGHAI) CO., LTD. All rights reserved.</span>
+    <v-footer color="purple darken-3" app fixed>
+      <span class="white--text">&copy; Lil Data Monster</span>
     </v-footer>
   </v-app>
 </template>

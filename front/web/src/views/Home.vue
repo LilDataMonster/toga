@@ -7,9 +7,13 @@
           <v-card-title primary-title>
             <div class="ma-auto">
               <span class="grey--text">IDF version: {{version}}</span>
-              <br>
+              <br/>
               <span class="grey--text">ESP cores: {{cores}}</span>
+              <br/>
             </div>
+            <v-btn fab dark large color="purple darken-3" @click="start_board">
+              <v-icon dark>check_box</v-icon>
+            </v-btn>
           </v-card-title>
         </v-card>
       </v-flex>
@@ -25,16 +29,32 @@ export default {
       cores: null
     };
   },
+  methods: {
+    start_board: function() {
+      this.$ajax
+        .post("/config", {
+          operational: true,
+          ble_duration: 120000,
+          wifi_duration: 120000
+        })
+        .then(data => {
+          console.log(data);
+        })
+        .catch(error => {
+          console.log(error);
+        });
+    }
+  },
   mounted() {
-    this.$ajax
-      .get("/api/v1/system/info")
-      .then(data => {
-        this.version = data.data.version;
-        this.cores = data.data.cores;
-      })
-      .catch(error => {
-        console.log(error);
-      });
+    // this.$ajax
+    //   .get("/api/v1/system/info")
+    //   .then(data => {
+    //     this.version = data.data.version;
+    //     this.cores = data.data.cores;
+    //   })
+    //   .catch(error => {
+    //     console.log(error);
+    //   });
   }
 };
 </script>
