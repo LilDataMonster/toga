@@ -6,6 +6,8 @@
 #include <globals.hpp>
 #include <uri_handles.hpp>
 
+#include <string>
+
 #define TAG "URI_HANDLE"
 
 // #define SCRATCH_BUFSIZE (1024)
@@ -454,6 +456,13 @@ esp_err_t config_post_handler(httpd_req_t *req) {
             ESP_LOGI(TAG, "xbee_ms_json set: %d ms", xbee_ms_json->valueint);
         } else {
             ESP_LOGI(TAG, "xbee_ms_json not found");
+        }
+
+        // update post_url
+        cJSON *post_url_json = cJSON_GetObjectItemCaseSensitive(board_json, "post_url");
+        if(cJSON_IsString(post_url_json) && (post_url_json->valuestring != NULL)) {
+            // set new URL
+            g_post_url = std::string(post_url_json->valuestring);
         }
 
         // check this last

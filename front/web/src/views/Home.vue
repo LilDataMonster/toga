@@ -31,6 +31,9 @@
                     <v-flex xs4>
                       <v-text-field v-model="xbee_duration" class="mt-0" type="number"></v-text-field>
                     </v-flex>
+                    <v-flex>
+                      <v-text-field v-model="post_url" label="Post URL" single-line></v-text-field>
+                    </v-flex>
                   </v-layout>
                 </v-container>
               </v-card-text>
@@ -53,7 +56,8 @@ export default {
       cores: null,
       wifi_duration: 120000,
       ble_duration: 120000,
-      xbee_duration: 120000
+      xbee_duration: 120000,
+      post_url: "http://ldm-nodered.herokuapp.com/esp32"
     };
   },
   methods: {
@@ -62,8 +66,10 @@ export default {
         .post("/config", {
           board: {
             operational: true,
-            wifi_duration: wifi_duration,
-            ble_duration: ble_duration
+            wifi_duration: this.wifi_duration,
+            ble_duration: this.ble_duration,
+            xbee_duration: this.xbee_duration,
+            post_url: this.post_url
           }
         })
         .then(data => {
