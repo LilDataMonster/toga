@@ -116,7 +116,7 @@ esp_err_t bleUpdateIpv4(void) {
 esp_err_t bleUpdateDht(void) {
     esp_err_t err = ESP_OK;
 
-    if(g_ble == NULL) {
+    if(!g_ble->isInitialized()) {
         return err;
     }
 
@@ -138,7 +138,7 @@ esp_err_t bleUpdateDht(void) {
 esp_err_t bleUpdateBme680(void) {
     esp_err_t err = ESP_OK;
 
-    if(g_ble == NULL) {
+    if(!g_ble->isInitialized()) {
         return err;
     }
 

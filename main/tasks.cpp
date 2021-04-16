@@ -31,6 +31,7 @@
 #include <ble_services.hpp>
 
 #include <globals.hpp>
+#include <mount_flash.hpp>
 
 
 #define TRANSMIT_SCHEDULER_TASK_LOG "TRANSMIT_SCHEDULER_TASK"
@@ -60,6 +61,8 @@ void setup_task(void *pvParameters) {
     httpd_config_t * server_config = http_server->getConfig();
     server_config->send_wait_timeout = 20;
 
+    init_fs();
+
     // initialize mdns
     LDM::MDNS mdns;
     mdns.init();
@@ -71,13 +74,14 @@ void setup_task(void *pvParameters) {
             http_server->startServer();
             if(http_server->isStarted()) {
                 ESP_LOGI(SETUP_TASK_LOG, "Registering HTTP Server URI Handles");
-                http_server->registerUriHandle(&uri_get);
+                // http_server->registerUriHandle(&uri_get);
                 // http_server->registerUriHandle(&uri_post);
                 // http_server->registerUriHandle(&uri_data);
                 // http_server->registerUriHandle(&uri_get_camera);
                 http_server->registerUriHandle(&uri_post_config);
                 // http_server->registerUriHandle(&uri_options_config);
                 // http_server->registerUriHandle(&uri_get_stream);
+                http_server->registerUriHandle(&common_get_uri);
             }
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -341,14 +345,15 @@ void ble_task(void *pvParameters) {
         ESP_LOGE(BLE_TASK_LOG, "BLE scheduler not found, removing task");
         vTaskDelete(NULL);
     }
+    g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
 
     while(true) {
         // check if ble should be enabled
         if(ble_transmitter->enabled) {
             // initialize bluetooth device
-            if(g_ble == NULL) {
+            // if(g_ble == NULL) {
+            if(!g_ble->isInitialized()) {
                 ESP_LOGI(BLE_TASK_LOG, "Enabling BLE");
-                g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
                 g_ble->init();                                           // initialize bluetooth
                 g_ble->setupDefaultBleGapCallback();                     // setup ble configuration
 
@@ -365,16 +370,17 @@ void ble_task(void *pvParameters) {
             }
         } else {
             // deinitialize bluetooth device
-            if(g_ble != NULL) {
+            // if(g_ble != NULL) {
+            if(g_ble->isInitialized()) {
                 ESP_LOGI(BLE_TASK_LOG, "Disabling BLE");
                 g_ble->deinit();
-                delete g_ble;
-                g_ble = NULL;
                 ESP_LOGI(BLE_TASK_LOG, "Disabled BLE");
             }
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+    delete g_ble;
+    g_ble = NULL;
 
     // // initialize bluetooth device
     // g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));

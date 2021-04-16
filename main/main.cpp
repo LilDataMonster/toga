@@ -74,6 +74,9 @@ void app_main(void) {
     g_nvs = new LDM::NVS();
     g_nvs->openNamespace("system");
 
+    // setup MAC for broadcasting
+    err = esp_read_mac(mac, ESP_MAC_WIFI_STA);
+
     // TODO: Add different modes of which the board can be in
     if(mode == BoardMode::setup) {
         ESP_LOGI(APP_TAG, "Board in setup mode");
@@ -111,9 +114,6 @@ void app_main(void) {
     //     g_nvs->getKeyStr("wifi_password", (char*)wifi_config.sta.password, &wifi_size);
     // }
     // g_nvs->close();
-
-    // // setup MAC for broadcasting
-    // err = esp_read_mac(mac, ESP_MAC_WIFI_STA);
 
     // setup RTOS tasks
     ESP_LOGI(APP_MAIN, "Setting up RTOS tasks");
