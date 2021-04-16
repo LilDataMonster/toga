@@ -512,10 +512,18 @@ void xbee_task(void *pvParameters) {
     while(true) {
         // check if ble should be enabled
         if(xbee_transmitter->enabled) {
-            // initialize xbee device
-            // if(g_ble == NULL) {
-            // }
-        } else {
+            if(xSemaphoreTake(json_mutex, (TickType_t) 100 ) == pdTRUE) {
+                  // ESP_LOGI(WIFI_TASK_LOG, "Obtained Mutex");
+                  if(json_data != NULL) {
+                      // POST JSON data
+                      char* post_data = cJSON_Print(json_data);
+                      ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON data sent");
+                  } else {
+                      ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON value is NULL");
+                  }
+                  xSemaphoreGive(json_mutex);
+              }
+          } else {
             // deinitialize xbee device
             // if(g_ble != NULL) {
             // }
