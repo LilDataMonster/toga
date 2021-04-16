@@ -22,6 +22,7 @@
 #include <ble.hpp>
 #include <system.hpp>
 #include <wifi.hpp>
+#include <mdns.hpp>
 
 #include <driver/uart.h>
 #include <driver/gpio.h>
@@ -30,6 +31,7 @@
 #include <ble_services.hpp>
 
 #include <globals.hpp>
+#include <mount_flash.hpp>
 
 
 #define TRANSMIT_SCHEDULER_TASK_LOG "TRANSMIT_SCHEDULER_TASK"
@@ -59,24 +61,42 @@ void setup_task(void *pvParameters) {
     httpd_config_t * server_config = http_server->getConfig();
     server_config->send_wait_timeout = 20;
 
-    while(true) {
+    init_fs();
+
+    // initialize mdns
+    LDM::MDNS mdns;
+    mdns.init();
+
+    while(mode == BoardMode::setup) {
         // start onboard HTTP server and register URI target locations for REST handles
         // TODO: Handle disconnect/stopping server
         if(g_wifi->isHosting() && !http_server->isStarted()) {
             http_server->startServer();
             if(http_server->isStarted()) {
                 ESP_LOGI(SETUP_TASK_LOG, "Registering HTTP Server URI Handles");
-                http_server->registerUriHandle(&uri_get);
+                // http_server->registerUriHandle(&uri_get);
                 // http_server->registerUriHandle(&uri_post);
                 // http_server->registerUriHandle(&uri_data);
                 // http_server->registerUriHandle(&uri_get_camera);
-                // http_server->registerUriHandle(&uri_post_config);
+                http_server->registerUriHandle(&uri_post_config);
                 // http_server->registerUriHandle(&uri_options_config);
                 // http_server->registerUriHandle(&uri_get_stream);
+                http_server->registerUriHandle(&common_get_uri);
             }
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+
+    mdns.deinit();
+
+    delete http_server;
+    http_server = NULL;
+
+    g_wifi->deinit();
+    delete g_wifi;
+    g_wifi = NULL;
+
+    vTaskDelete(NULL);
 }
 
 
@@ -325,14 +345,15 @@ void ble_task(void *pvParameters) {
         ESP_LOGE(BLE_TASK_LOG, "BLE scheduler not found, removing task");
         vTaskDelete(NULL);
     }
+    g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
 
     while(true) {
         // check if ble should be enabled
         if(ble_transmitter->enabled) {
             // initialize bluetooth device
-            if(g_ble == NULL) {
+            // if(g_ble == NULL) {
+            if(!g_ble->isInitialized()) {
                 ESP_LOGI(BLE_TASK_LOG, "Enabling BLE");
-                g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
                 g_ble->init();                                           // initialize bluetooth
                 g_ble->setupDefaultBleGapCallback();                     // setup ble configuration
 
@@ -349,16 +370,17 @@ void ble_task(void *pvParameters) {
             }
         } else {
             // deinitialize bluetooth device
-            if(g_ble != NULL) {
+            // if(g_ble != NULL) {
+            if(g_ble->isInitialized()) {
                 ESP_LOGI(BLE_TASK_LOG, "Disabling BLE");
                 g_ble->deinit();
-                delete g_ble;
-                g_ble = NULL;
                 ESP_LOGI(BLE_TASK_LOG, "Disabled BLE");
             }
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+    delete g_ble;
+    g_ble = NULL;
 
     // // initialize bluetooth device
     // g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
@@ -490,10 +512,18 @@ void xbee_task(void *pvParameters) {
     while(true) {
         // check if ble should be enabled
         if(xbee_transmitter->enabled) {
-            // initialize xbee device
-            // if(g_ble == NULL) {
-            // }
-        } else {
+            if(xSemaphoreTake(json_mutex, (TickType_t) 100 ) == pdTRUE) {
+                  // ESP_LOGI(WIFI_TASK_LOG, "Obtained Mutex");
+                  if(json_data != NULL) {
+                      // POST JSON data
+                      char* post_data = cJSON_Print(json_data);
+                      ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON data sent");
+                  } else {
+                      ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON value is NULL");
+                  }
+                  xSemaphoreGive(json_mutex);
+              }
+          } else {
             // deinitialize xbee device
             // if(g_ble != NULL) {
             // }
