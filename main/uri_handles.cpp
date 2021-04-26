@@ -43,8 +43,8 @@ httpd_uri_t uri_get = {
 
 esp_err_t get_handler(httpd_req_t *req) {
     /* Send a simple response */
-    // const char resp[] = "Woot";
-    std::string resp = "Woot!\nTemperature is " + std::to_string(bme680.getTemperature()) + "\nHumidity is " + std::to_string(bme680.getHumidity());
+    std::string resp = "Woot";
+    // std::string resp = "Woot!\nTemperature is " + std::to_string(bme680.getTemperature()) + "\nHumidity is " + std::to_string(bme680.getHumidity());
     httpd_resp_send(req, resp.c_str(), HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }

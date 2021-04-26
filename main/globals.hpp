@@ -20,6 +20,11 @@
 extern LDM::BME680 bme680;
 #endif
 
+#if CONFIG_CAMERA_SENSOR_ENABLED
+#include <camera.hpp>
+extern LDM::Camera camera;
+#endif
+
 // define various board modes
 enum BoardMode : uint8_t { setup, operational };
 extern BoardMode mode;

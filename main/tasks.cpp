@@ -151,7 +151,7 @@ void sensor_task(void *pvParameters) {
                 // create JSON data containing sensor information
                 cJSON *sensor_json = sensor->buildJson();
                 cJSON_AddItemToObject(json_data, sensor->getSensorName(), sensor_json);
-                sensor->releaseData();
+                // sensor->releaseData();
 
                 // char* sensor_out = cJSON_Print(sensor_json);
                 // printf("%s\n", sensor_out);
@@ -162,7 +162,9 @@ void sensor_task(void *pvParameters) {
             xSemaphoreGive(json_mutex);
         }
 
+#if CONFIG_BME680_SENSOR_ENABLED
         bleUpdateBme680();
+#endif
 
         uint32_t ms = 1000;
         // If you read the sensor data too often, it will heat up
@@ -240,10 +242,12 @@ void wifi_task(void *pvParameters) {
             if(g_wifi != NULL && g_wifi->isConnected()) {
                 // post message if data avaliable to publish
                 if(xSemaphoreTake(json_mutex, (TickType_t) 100 ) == pdTRUE) {
+
                     // ESP_LOGI(WIFI_TASK_LOG, "Obtained Mutex");
                     if(json_data != NULL) {
                         // POST JSON data
-                        g_http_client->postJSON(json_data);
+                        // g_http_client->postJSON(json_data);
+                        g_http_client->postJSON(json_data, 1024*4);
                         // char* post_data = cJSON_Print(json_data);
                         // ESP_LOGI(WIFI_TASK_LOG, "%s", post_data);
                         // http.postFormattedJSON(post_data);

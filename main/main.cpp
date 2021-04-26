@@ -30,6 +30,20 @@ void app_main(void);
 LDM::BME680 bme680;
 #endif
 
+#if CONFIG_CAMERA_SENSOR_ENABLED
+#include <camera.hpp>
+
+// setup camera image resolution/configufation
+// LDM::Camera camera = LDM::Camera(FRAMESIZE_HVGA, PIXFORMAT_JPEG, 10, 1);
+LDM::Camera camera = LDM::Camera(FRAMESIZE_QCIF, PIXFORMAT_JPEG, 10, 1);
+// LDM::Camera camera = LDM::Camera(FRAMESIZE_VGA, PIXFORMAT_JPEG, 15, 1, 10000000);
+// LDM::Camera camera = LDM::Camera(FRAMESIZE_VGA, PIXFORMAT_JPEG, 15, 1, 10000000);
+// LDM::Camera camera = LDM::Camera(FRAMESIZE_VGA, PIXFORMAT_JPEG, 50, 1);
+// LDM::Camera camera = LDM::Camera(FRAMESIZE_HVGA, PIXFORMAT_JPEG, 20, 1);
+// LDM::Camera camera = LDM::Camera(FRAMESIZE_VGA, PIXFORMAT_JPEG, 30, 1);
+// LDM::Camera camera = LDM::Camera(FRAMESIZE_CIF, PIXFORMAT_JPEG, 10, 1);
+#endif
+
 BoardMode mode = BoardMode::setup;
 // BoardMode mode = BoardMode::operational;
 SemaphoreHandle_t json_mutex = xSemaphoreCreateMutex();
@@ -45,6 +59,9 @@ LDM::WiFi *g_wifi = NULL;
 std::vector<LDM::Sensor*> sensors {
 #if CONFIG_BME680_SENSOR_ENABLED
     &bme680,
+#endif
+#if CONFIG_CAMERA_SENSOR_ENABLED
+    &camera,
 #endif
 };
 
