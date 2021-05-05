@@ -492,9 +492,9 @@ void led_fade_task(void *pvParameters) {
 }
 
 #define XBEE_TASK_LOG "XBEE_TASK"
-#define RX_BUF_SIZE 1024;
-#define TXD_PIN (GPIO_NUM_23)
-#define RXD_PIN (GPIO_NUM_22)
+const int RX_BUF_SIZE = 1024;
+#define TXD_PIN (GPIO_NUM_25)
+#define RXD_PIN (GPIO_NUM_26)
 void xbee_task(void *pvParameters) {
     // get transmitter scheduler handle
     transmit_t *xbee_transmitter = NULL;
@@ -509,17 +509,34 @@ void xbee_task(void *pvParameters) {
         vTaskDelete(NULL);
     }
 
+    const uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_APB,
+    };
+
+    uart_driver_install(UART_NUM_1, RX_BUF_SIZE * 4, RX_BUF_SIZE * 4, 0, NULL, 0);
+    uart_param_config(UART_NUM_1, &uart_config);
+    uart_set_pin(UART_NUM_1, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+
     while(true) {
-        // check if ble should be enabled
+        // check if xbee should be enabled
         if(xbee_transmitter->enabled) {
             if(xSemaphoreTake(json_mutex, (TickType_t) 100 ) == pdTRUE) {
                   // ESP_LOGI(WIFI_TASK_LOG, "Obtained Mutex");
                   if(json_data != NULL) {
-                      // POST JSON data
-                      char* post_data = cJSON_Print(json_data);
-                      ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON data sent");
+                    // POST JSON data
+                    char* post_data = cJSON_Print(json_data);
+                    const int len = strlen(post_data);
+                    esp_log_level_set(XBEE_TASK_LOG, ESP_LOG_INFO);
+                    const int txBytes = uart_write_bytes(UART_NUM_1, post_data, len);
+                    ESP_LOGI(XBEE_TASK_LOG, "Wrote %d bytes", txBytes);
+                    ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON data sent");
                   } else {
-                      ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON value is NULL");
+                    ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON value is NULL");
                   }
                   xSemaphoreGive(json_mutex);
               }

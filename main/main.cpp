@@ -51,7 +51,7 @@ std::vector<LDM::Sensor*> sensors {
 std::vector<transmit_t> transmitters {
     {Protocol::wifi, false, 120000, "wifi"},
     {Protocol::ble,  false, 120000, "ble"},
-    // {Protocol::xbee, false, 120000, "xbee"},
+    {Protocol::xbee, false, 120000, "xbee"},
 };
 
 uint8_t mac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -122,10 +122,10 @@ void app_main(void) {
     xTaskCreate(sensor_task, "sensor_task", 8192, (void*)&sensors, 5, NULL);                      // task: sensor data
     xTaskCreate(wifi_task, "wifi_task", 8192*10, NULL, 5, NULL);                                     // task: publishing data with REST POST
     xTaskCreate(ble_task, "ble_task", 8192, NULL, 5, NULL);                                     // task: publishing data with REST POST
-//
-// #if CONFIG_ZIGBEE_ENABLED
-//     xTaskCreate(xbee_task, "xbee_task", 8192, NULL, 5, NULL);
-// #endif
+
+#if CONFIG_ZIGBEE_ENABLED
+    xTaskCreate(xbee_task, "xbee_task", 8192, NULL, 5, NULL);
+ #endif
 //     // xTaskCreate(led_fade_task, "led_task", 3*configMINIMAL_STACK_SIZE, NULL, 5, NULL);         // task: fade LED lights
 //     // xTaskCreate(led_on_off_task, "led_task", 3*configMINIMAL_STACK_SIZE, NULL, 5, NULL);          // task: turn on/off LED lights (no fade)
 
