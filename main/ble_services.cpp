@@ -196,6 +196,7 @@ void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts
             ESP_LOGI(BLE_SERVICE_TAG, "ESP_GATTS_WRITE_EVT, conn_id %d, trans_id %d, handle %d\n",
                       param->write.conn_id, param->write.trans_id, param->write.handle);
 
+#if CONFIG_BME680_SENSOR_ENABLED
             if (!param->write.is_prep) {
                 // ESP_LOGI(BLE_SERVICE_TAG, "GATT_WRITE_EVT, value len %d, value :", param->write.len);
                 // esp_log_buffer_hex(BLE_SERVICE_TAG, param->write.value, param->write.len);
@@ -236,6 +237,7 @@ void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts
                     }
                 }
             }
+#endif
             break;
         case ESP_GATTS_EXEC_WRITE_EVT:
             // the length of gattc prepare write data must be less than GATTS_DEMO_CHAR_VAL_LEN_MAX.
