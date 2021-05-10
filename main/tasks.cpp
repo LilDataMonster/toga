@@ -178,6 +178,7 @@ void sensor_task(void *pvParameters) {
 #define HTTP_POST_ENDPOINT CONFIG_ESP_POST_ENDPOINT
 std::string g_post_url = HTTP_POST_ENDPOINT;
 
+#if CONFIG_CAMERA_SENSOR_ENABLED
 esp_err_t transmit_camera(LDM::HTTP_Client * client) {
 
     esp_err_t res = ESP_OK;
@@ -191,24 +192,12 @@ esp_err_t transmit_camera(LDM::HTTP_Client * client) {
     if(res != ESP_OK) {
         ESP_LOGE(WIFI_TASK_LOG, "Failed to send image buffer: %s", esp_err_to_name(res));
     }
-    // if(res != ESP_OK) {
-    //     ESP_LOGE(TAG, "Camera capture failed");
-    //     httpd_resp_send_500(req);
-    //     return ESP_FAIL;
-    // }
-    //
-    // res = httpd_resp_set_type(req, "image/jpeg");
-    // if(res == ESP_OK){
-    //     res = httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.jpg");
-    // }
-    //
-    // fb_len = camera.getJpgBufferLength();
-    // res = httpd_resp_send(req, (const char *)camera.getJpgBuffer(), camera.getJpgBufferLength());
-
+    
     int64_t fr_end = esp_timer_get_time();
     ESP_LOGI(WIFI_TASK_LOG, "JPG: %uKB %ums", (uint32_t)(fb_len/1024), (uint32_t)((fr_end - fr_start)/1000));
     return res;
 }
+#endif
 
 #define FIRMWARE_UPGRADE_ENDPOINT CONFIG_FIRMWARE_UPGRADE_ENDPOINT
 std::string g_firmware_upgrade_url = HTTP_POST_ENDPOINT;
