@@ -3,7 +3,12 @@
     <v-layout text-xs-center wrap>
       <v-flex xs12 sm6 offset-sm3>
         <v-card>
-          <v-img :src="require('../assets/logo.png')" contain height="200"></v-img>
+          <v-row>
+            <v-col class="d-flex child-flex">
+              <v-img :src="require('../assets/ldm.png')" contain height="200"></v-img>
+              <v-img :src="require('../assets/prixarc.png')" contain height="200"></v-img>
+            </v-col>
+          </v-row>
           <v-card-title primary-title>
             <div class="ma-auto">
               <span class="grey--text">IDF version: {{version}}</span>
