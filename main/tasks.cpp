@@ -192,7 +192,7 @@ esp_err_t transmit_camera(LDM::HTTP_Client * client) {
     if(res != ESP_OK) {
         ESP_LOGE(WIFI_TASK_LOG, "Failed to send image buffer: %s", esp_err_to_name(res));
     }
-    
+
     int64_t fr_end = esp_timer_get_time();
     ESP_LOGI(WIFI_TASK_LOG, "JPG: %uKB %ums", (uint32_t)(fb_len/1024), (uint32_t)((fr_end - fr_start)/1000));
     return res;
@@ -310,56 +310,6 @@ void wifi_task(void *pvParameters) {
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
-
-//     // setup wifi
-//     g_wifi = new LDM::WiFi();
-//     g_wifi->init();
-//
-//     // initialize HTTP client
-//     g_http_client = new LDM::HTTP_Client(const_cast<char*>(g_post_url.c_str()));
-//
-// #ifdef CONFIG_OTA_ENABLED
-//     // setup ota updater and checkUpdates
-//     LDM::OTA ota(g_firmware_upgrade_url.c_str());
-// #endif
-//
-//     int num_messages = 0; // temp debug
-//     while(true) {
-//         if(g_wifi != NULL && g_wifi->isConnected()) {
-//             if(json_data != NULL) {
-//
-//                 // POST JSON data
-//                 g_http_client->postJSON(json_data);
-//                 // char* post_data = cJSON_Print(json_data);
-//                 // ESP_LOGI(WIFI_TASK_LOG, "%s", post_data);
-//                 // http.postFormattedJSON(post_data);
-//                 // free(post_data);
-//             } else {
-//                 ESP_LOGI(WIFI_TASK_LOG, "SENSOR_JSON value is NULL");
-//             }
-// #ifdef CONFIG_OTA_ENABLED
-//             // check for OTA updates
-//             ota.checkUpdates(true);
-// #endif
-//         } else {
-//             ESP_LOGI(WIFI_TASK_LOG, "Wifi is not connected");
-//         }
-//
-//         // temp debug
-//         printf("Num Messages: %d\n", num_messages);
-//         if(num_messages++ == 3) {
-//             break;
-//         }
-//         uint32_t ms = 1000;
-//         vTaskDelay(pdMS_TO_TICKS(ms));
-//     }
-//     g_http_client->deinit();
-//     g_wifi->deinit();
-//     g_wifi = NULL;
-//     g_http_client = NULL;
-//
-//     // messageFinished = true;
-//     vTaskDelete(NULL);
 }
 
 #define BLE_TASK_LOG "BLE_TASK"
@@ -412,30 +362,6 @@ void ble_task(void *pvParameters) {
     }
     delete g_ble;
     g_ble = NULL;
-
-    // // initialize bluetooth device
-    // g_ble = new LDM::BLE(const_cast<char*>(CONFIG_BLUETOOTH_DEVICE_NAME));
-    // g_ble->init();                                           // initialize bluetooth
-    // g_ble->setupDefaultBleGapCallback();                     // setup ble configuration
-    //
-    // // setup BluFi
-    // // g_ble->setupDefaultBlufiCallback();                      // setup blufi configuration
-    // // g_ble->initBlufi();                                      // initialize blufi with default wifi configuration
-    // // g_ble->initBlufi(&wifi_config);                          // initialize blufi with given wifi configuration
-    //
-    // // setup BLE app
-    // g_ble->registerGattServerCallback(gatts_event_handler);  // setup ble gatt server callback handle
-    // g_ble->registerGattServerAppId(ESP_APP_ID);              // setup ble gatt application profile from database
-    //
-    // while(true) {
-    //     ESP_LOGI(BLE_TASK_LOG, "BLE duration is: %u: enabled: %u", ble_transmitter->duration, ble_transmitter->enabled);
-    //     vTaskDelay(pdMS_TO_TICKS(20000));
-    // }
-    // g_ble->deinit();
-    // delete g_ble;
-    // g_ble = NULL;
-    //
-    // vTaskDelete(NULL);
 }
 
 
@@ -578,37 +504,6 @@ void xbee_task(void *pvParameters) {
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
-
-    // const uart_config_t uart_config = {
-    //     .baud_rate = 115200,
-    //     .data_bits = UART_DATA_8_BITS,
-    //     .parity = UART_PARITY_DISABLE,
-    //     .stop_bits = UART_STOP_BITS_1,
-    //     .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-    //     .source_clk = UART_SCLK_APB,
-    // };
-    //
-    // uart_driver_install(UART_NUM_1, RX_BUF_SIZE * 4, RX_BUF_SIZE * 4, 0, NULL, 0);
-    // uart_param_config(UART_NUM_1, &uart_config);
-    // uart_set_pin(UART_NUM_1, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    // const char *TX_TASK_TAG = "TX_TASK";
-    // vTaskDelay(pdMS_TO_TICKS(30000));
-    // while(true) {
-    //     if(json_data != NULL) {
-    //
-    //         // POST JSON data
-    //         char *post_data = cJSON_Print(json_data);
-    //
-    //         const int len = strlen(post_data);
-    //         esp_log_level_set(TX_TASK_TAG, ESP_LOG_INFO);
-    //         const int txBytes = uart_write_bytes(UART_NUM_1, post_data, len);
-    //         ESP_LOGI(TX_TASK_TAG, "Wrote %d bytes", txBytes);
-    //         printf("%s\n", post_data);
-    //     } else {
-    //         ESP_LOGI(XBEE_TASK_LOG, "SENSOR_JSON value is NULL");
-    //     }
-    //     vTaskDelay(pdMS_TO_TICKS(60000));
-    // }
 
 }
 

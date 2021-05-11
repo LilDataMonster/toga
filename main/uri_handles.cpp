@@ -482,24 +482,29 @@ esp_err_t config_post_handler(httpd_req_t *req) {
     if(cJSON_IsObject(report_json)) {
         cJSON *post_url_json = cJSON_GetObjectItemCaseSensitive(report_json, "post_url");
         if(cJSON_IsString(post_url_json) && (post_url_json->valuestring != NULL)) {
+
+            char* new_url = post_url_json->valuestring;
+
             // set new URL
-            g_http_client->setURL(post_url_json->valuestring);
+            if(g_http_client != NULL) {
+                g_http_client->setURL(new_url);
+            }
 
             // update url in NVS
             if(g_nvs != NULL) {
                 g_nvs->openNamespace("url");
-                esp_err_t err = g_nvs->setKeyStr("post", const_cast<char*>(g_http_client->getURL()));
+                esp_err_t err = g_nvs->setKeyStr("post", new_url);
                 if(err != ESP_OK) {
-                    ESP_LOGE(TAG, "Failed to update NVS with new url::post string: %s", g_http_client->getURL());
+                    ESP_LOGE(TAG, "Failed to update NVS with new url::post string: %s", new_url);
                 } else {
                     g_nvs->commit();
                 }
                 g_nvs->close();
             } else {
-                ESP_LOGI(TAG, "No NVS found when updating Post URL: %s", g_http_client->getURL());
+                ESP_LOGI(TAG, "No NVS found when updating Post URL: %s", new_url);
             }
 
-            ESP_LOGI(TAG, "Report URL Post value set: %s", post_url_json->valuestring);
+            ESP_LOGI(TAG, "Report URL Post value set: %s", new_url);
         } else {
             ESP_LOGI(TAG, "post_url value not found");
         }
